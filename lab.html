@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 手勢識別：互動教學實驗室</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --purple: #7c3aed;
+      --purple-light: #a78bfa;
+      --yellow: #fbbf24;
+      --green: #34d399;
+      --red: #f87171;
+      --bg: #0f0e17;
+      --surface: #1a1830;
+      --surface2: #252340;
+      --border: #ffffff18;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    #app {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      grid-template-rows: 60px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #topbar {
+      grid-column: 1 / -1;
+      background: #0a0918;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+    }
+    #topbar h1 { font-size: 1.1em; color: var(--purple-light); letter-spacing: 0.5px; }
+    .step-pills { display: flex; gap: 8px; margin-left: auto; }
+    .pill {
+      padding: 5px 16px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: #6b7280;
+      transition: all 0.2s;
+    }
+    .pill.active { background: var(--purple); border-color: var(--purple); color: white; font-weight: bold; }
+    #left-panel {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    #cam-wrap {
+      position: relative;
+      width: 308px;
+      height: 231px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 0 0 2px var(--border);
+    }
+    #video { display: none; }
+    #cam-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+    #cam-status { font-size: 0.85em; color: #6b7280; text-align: center; }
+    #cam-status.ok { color: var(--green); }
+    #data-panel {
+      width: 100%;
+      background: var(--surface2);
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 0.85em;
+    }
+    #data-panel h4 { color: var(--yellow); margin-bottom: 10px; font-size: 0.9em; letter-spacing: 1px; text-transform: uppercase; }
+    .lm-row {
+      display: grid;
+      grid-template-columns: 1fr 60px 60px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      gap: 4px;
+    }
+    .lm-row.head { color: var(--faint); font-size: 0.8em; padding-bottom: 6px; }
+    .lm-row:last-child { border-bottom: none; }
+    .lm-label { color: var(--purple-light); font-size: 0.92em; }
+    .lm-val { font-family: 'Courier New', monospace; color: var(--green); font-size: 0.95em; text-align: right; }
+    .lm-val.status { grid-column: 2 / 4; color: var(--yellow); text-align: left; }
+    #right-panel { overflow-y: auto; padding: 28px 36px; max-width: 780px; }
+    .lesson { display: none; }
+    .lesson.active { display: block; }
+    .lesson-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
+    .step-badge {
+      background: var(--purple); color: white; font-weight: bold;
+      font-size: 1em; width: 42px; height: 42px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; box-shadow: 0 0 16px var(--purple);
+    }
+    .lesson-header h2 { font-size: 1.6em; line-height: 1.3; }
+    .lesson-header p  { font-size: 0.95em; color: #94a3b8; margin-top: 4px; }
+    .concept-box {
+      background: var(--surface);
+      border-left: 4px solid var(--purple);
+      border-radius: 0 12px 12px 0;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      line-height: 1.8;
+      font-size: 0.98em;
+    }
+    .concept-box strong { color: var(--yellow); }
+    .concept-box em { color: var(--purple-light); font-style: normal; }
+    .code-block {
+      background: #0d0b1e;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      line-height: 1.8;
+      margin: 16px 0;
+      overflow-x: auto;
+    }
+    .code-block .kw  { color: #f472b6; }
+    .code-block .fn  { color: #fbbf24; }
+    .code-block .num { color: #34d399; }
+    .code-block .cm  { color: #4b5563; }
+    .code-block .str { color: #86efac; }
+    .code-block .hl  { background: #fbbf2420; padding: 1px 4px; border-radius: 4px; }
+    .task-box {
+      border: 1px solid var(--yellow);
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin: 20px 0;
+      background: #fbbf2408;
+    }
+    .task-box .task-title { font-weight: bold; color: var(--yellow); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .task-box ol, .task-box ul { padding-left: 20px; }
+    .task-box li { margin: 6px 0; line-height: 1.7; font-size: 0.97em; }
+    .question-block { background: var(--surface2); border-radius: 12px; padding: 18px 22px; margin: 16px 0; }
+    .question-block .q-text { font-size: 1em; margin-bottom: 12px; line-height: 1.7; }
+    .q-input-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .q-input {
+      background: #0d0b1e; border: 1px solid var(--border); border-radius: 8px;
+      color: white; padding: 8px 14px; font-size: 1em; outline: none;
+      transition: border-color 0.2s; width: 180px;
+    }
+    .q-input:focus { border-color: var(--purple); }
+    .q-input.correct { border-color: var(--green); background: #34d39910; }
+    .q-input.wrong   { border-color: var(--red);   background: #f8717110; }
+    .check-btn {
+      padding: 8px 20px; border: none; border-radius: 8px;
+      background: var(--purple); color: white; cursor: pointer; font-size: 0.95em;
+    }
+    .check-btn:hover { opacity: 0.85; }
+    .answer-feedback { margin-top: 10px; font-size: 0.95em; min-height: 22px; }
+    .answer-feedback.ok   { color: var(--green); }
+    .answer-feedback.fail { color: var(--red); }
+    .live-demo {
+      background: var(--surface2); border-radius: 14px; padding: 20px;
+      margin: 16px 0; border: 1px dashed var(--border);
+    }
+    .live-demo h4 { color: var(--purple-light); margin-bottom: 12px; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }
+    #live-output { font-family: 'Courier New', monospace; font-size: 1.1em; min-height: 36px; }
+    .gesture-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+    .gesture-card {
+      background: var(--surface); border: 2px solid var(--border);
+      border-radius: 12px; padding: 16px; text-align: center;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .gesture-card.detected {
+      border-color: var(--green); box-shadow: 0 0 16px #34d39940; background: #34d3990a;
+    }
+    .gesture-card .g-icon { font-size: 2.2em; margin-bottom: 6px; }
+    .gesture-card .g-name { font-size: 0.95em; font-weight: bold; }
+    .gesture-card .g-rule { font-size: 0.78em; color: #6b7280; margin-top: 4px; }
+    #custom-code {
+      width: 100%; height: 160px; background: #0d0b1e;
+      border: 1px solid var(--border); border-radius: 10px;
+      color: #c4b5fd; font-family: 'Courier New', monospace; font-size: 0.9em;
+      padding: 14px; resize: vertical; outline: none;
+    }
+    #custom-code:focus { border-color: var(--purple); }
+    #run-btn {
+      padding: 10px 28px; background: linear-gradient(135deg, var(--purple), #a855f7);
+      border: none; border-radius: 8px; color: white; font-size: 1em;
+      cursor: pointer; margin-top: 10px; font-weight: bold;
+    }
+    #run-btn:hover { opacity: 0.9; }
+    #custom-result {
+      min-height: 40px; font-size: 1.3em; font-family: monospace;
+      background: var(--surface2); border-radius: 8px; padding: 10px 16px;
+    }
+    #run-error { color: var(--red); font-size: 0.9em; font-family: monospace; margin-top: 6px; min-height: 20px; }
+    .nav-row {
+      display: flex; gap: 12px; margin-top: 32px;
+      padding-top: 20px; border-top: 1px solid var(--border);
+    }
+    .nav-btn {
+      padding: 12px 28px; border-radius: 10px; font-size: 1em;
+      cursor: pointer; border: 1px solid var(--border);
+      background: transparent; color: #94a3b8; transition: all 0.2s;
+    }
+    .nav-btn.primary { background: var(--purple); border-color: var(--purple); color: white; font-weight: bold; }
+    .nav-btn:hover { opacity: 0.85; }
+    #intro-screen {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #0f0c29, #1a1045);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px; z-index: 200;
+    }
+    #intro-screen h1 { font-size: 2.6em; background: linear-gradient(135deg, #a78bfa, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; }
+    #intro-screen p  { font-size: 1.1em; color: #c4b5fd; text-align: center; max-width: 560px; line-height: 1.9; }
+    #start-btn {
+      padding: 16px 52px; background: linear-gradient(135deg, var(--purple), #a855f7);
+      border: none; border-radius: 50px; color: white; font-size: 1.3em;
+      font-weight: bold; cursor: pointer; box-shadow: 0 0 30px #a855f766;
+    }
+    .intro-meta { color: #4b5563; font-size: 0.9em; }
+    .tag { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 0.82em; margin: 3px; }
+    .tag-p { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
+    .tag-g { background: #05966922; color: #34d399; border: 1px solid #05966944; }
+    /* Score & difficulty */
+    #score-badge {
+      background: #fbbf2418; border: 1px solid #fbbf2455;
+      border-radius: 20px; padding: 5px 18px;
+      font-weight: bold; color: var(--yellow); font-size: 0.95em;
+      transition: transform 0.15s;
+      white-space: nowrap;
+    }
+    #score-badge.pop { transform: scale(1.35); }
+    .diff-badge {
+      display: inline-block; font-size: 0.76em; padding: 2px 9px;
+      border-radius: 10px; margin-right: 6px; vertical-align: middle;
+      font-weight: bold;
+    }
+    .diff-easy   { background: #05966920; color: #34d399; border: 1px solid #05966940; }
+    .diff-medium { background: #d9770620; color: #fb923c; border: 1px solid #d9770640; }
+    .diff-hard   { background: #7c3aed20; color: #a78bfa; border: 1px solid #7c3aed40; }
+    .q-pts-badge {
+      font-size: 0.82em; color: #6b7280; margin-left: 8px;
+      padding: 2px 8px; border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .q-pts-badge.earned { color: var(--yellow); border-color: #fbbf2466; background: #fbbf2410; font-weight: bold; }
+    #total-score-row {
+      background: var(--surface2); border-radius: 12px;
+      padding: 14px 18px; margin-top: 20px;
+      display: flex; align-items: center; justify-content: space-between;
+      border: 1px solid var(--border);
+    }
+    #total-score-row .ts-label { color: #94a3b8; font-size: 0.95em; }
+    #total-score-row .ts-val   { color: var(--yellow); font-size: 1.5em; font-weight: bold; }
+    #total-score-row .ts-max   { color: #6b7280; font-size: 0.9em; }
+
+    /* ── LESSON 5 LAB ── */
+    #lab-locked { display:flex; flex-direction:column; align-items:center; gap:18px; padding:40px 20px; text-align:center; }
+    #lab-locked .lock-icon { font-size:5em; line-height:1.1; }
+    #lab-locked .lock-title { font-size:1.5em; font-weight:bold; }
+    #lab-locked .lock-meta  { color:#94a3b8; line-height:2; font-size:1em; }
+    #lab-locked .lock-bar-track { width:100%; max-width:280px; height:12px; background:#1e1b4b; border-radius:6px; overflow:hidden; }
+    #lab-board { display:block; }
+    .challenge-card { background:#0d0f1e; border:2px solid #7c3aed; border-radius:20px; padding:22px 24px; text-align:center; margin-bottom:14px; }
+    .challenge-card .c-hint  { font-size:2.4em; line-height:1.2; }
+    .challenge-card .c-label { color:#64748b; font-size:0.82em; margin-top:6px; letter-spacing:0.03em; }
+    .challenge-card .c-code  {
+      font-family:"JetBrains Mono",monospace; font-size:1.25em; font-weight:700;
+      color:#34d399; background:#050711; border:1px solid #1e3a5f;
+      border-radius:12px; padding:16px 20px; margin:14px 0 10px;
+      text-align:left; line-height:2.1; white-space:pre;
+    }
+    .timer-track { height:10px; background:#1e1b4b; border-radius:5px; overflow:hidden; margin:12px 0; }
+    #lab-timer-bar { height:100%; width:100%; background:#34d399; transition:width 0.1s linear, background 0.3s; border-radius:5px; }
+    .lab-stats-row { display:flex; gap:16px; justify-content:center; margin-bottom:16px; }
+    .lab-stat { background:var(--surface2); border-radius:12px; padding:10px 24px; text-align:center; border:1px solid var(--border); }
+    .lab-stat .s-val { font-size:2em; font-weight:bold; color:var(--yellow); }
+    .lab-stat .s-lbl { color:#6b7280; font-size:0.82em; margin-top:2px; }
+    #lab-feedback { font-size:1.2em; font-weight:bold; min-height:1.8em; text-align:center; margin:10px 0; transition:color 0.2s; }
+    .lab-start-area { text-align:center; padding:20px 0; }
+    .lab-difficulty-badge { display:inline-block; padding:3px 12px; border-radius:20px; font-size:0.8em; font-weight:bold; background:#7c3aed33; color:#a78bfa; border:1px solid #7c3aed66; margin-top:6px; }
+  </style>
+</head>
+<body>
+
+<!-- INTRO -->
+<div id="intro-screen">
+  <h1>🤖 AI 手勢識別<br>互動教學實驗室</h1>
+  <p>今天你會用攝影機和 AI 對話，<br>親眼看到電腦怎麼「讀懂」你的手，<br>最後自己寫條件讓 AI 識別你設計的手勢。</p>
+  <div>
+    <span class="tag tag-p">MediaPipe Hands</span>
+    <span class="tag tag-p">21 個關鍵點</span>
+    <span class="tag tag-g">座標系統</span>
+    <span class="tag tag-g">手勢邏輯</span>
+  </div>
+  <button id="start-btn">📷 允許攝影機並開始</button>
+  <p class="intro-meta">全程在瀏覽器運行，不會上傳任何資料</p>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <h1>🤖 AI 手勢識別實驗室</h1>
+    <div id="score-badge">⭐ 0 / 100 分</div>
+    <div class="step-pills">
+      <button class="pill active" onclick="goLesson(1)">① 認識關鍵點</button>
+      <button class="pill" onclick="goLesson(2)">② 讀取座標</button>
+      <button class="pill" onclick="goLesson(3)">③ 識別手勢</button>
+      <button class="pill" onclick="goLesson(4)">④ 自己寫</button>
+      <button class="pill" id="pill-5" onclick="goLesson(5)">⑤ 🎮 闖關</button>
+    </div>
+  </div>
+
+  <!-- Left: Camera -->
+  <div id="left-panel">
+    <div id="cam-wrap">
+      <video id="video" playsinline></video>
+      <canvas id="cam-canvas" width="640" height="480"></canvas>
+    </div>
+    <div id="cam-status">等待攝影機…</div>
+
+    <div id="data-panel">
+      <h4>🔬 即時資料</h4>
+      <div class="lm-row head"><span class="lm-label">關鍵點</span><span style="text-align:right">x</span><span style="text-align:right">y</span></div>
+      <div class="lm-row"><span class="lm-label">手腕 [0]</span><span class="lm-val" id="d-0x">—</span><span class="lm-val" id="d-0y">—</span></div>
+      <div class="lm-row"><span class="lm-label">大拇指尖 [4]</span><span class="lm-val" id="d-4x">—</span><span class="lm-val" id="d-4y">—</span></div>
+      <div class="lm-row"><span class="lm-label">食指根 [5]</span><span class="lm-val" id="d-5x">—</span><span class="lm-val" id="d-5y">—</span></div>
+      <div class="lm-row"><span class="lm-label">食指尖 [8]</span><span class="lm-val" id="d-8x">—</span><span class="lm-val" id="d-8y">—</span></div>
+      <div class="lm-row"><span class="lm-label">中指根 [9]</span><span class="lm-val" id="d-9x">—</span><span class="lm-val" id="d-9y">—</span></div>
+      <div class="lm-row"><span class="lm-label">中指尖 [12]</span><span class="lm-val" id="d-12x">—</span><span class="lm-val" id="d-12y">—</span></div>
+      <div class="lm-row"><span class="lm-label">無名指根 [13]</span><span class="lm-val" id="d-13x">—</span><span class="lm-val" id="d-13y">—</span></div>
+      <div class="lm-row"><span class="lm-label">無名指尖 [16]</span><span class="lm-val" id="d-16x">—</span><span class="lm-val" id="d-16y">—</span></div>
+      <div class="lm-row"><span class="lm-label">小指根 [17]</span><span class="lm-val" id="d-17x">—</span><span class="lm-val" id="d-17y">—</span></div>
+      <div class="lm-row"><span class="lm-label">小指尖 [20]</span><span class="lm-val" id="d-20x">—</span><span class="lm-val" id="d-20y">—</span></div>
+    </div>
+  </div>
+
+  <!-- Right: Lessons -->
+  <div id="right-panel">
+
+    <!-- LESSON 1 -->
+    <div class="lesson active" id="lesson-1">
+      <div class="lesson-header">
+        <div class="step-badge">1</div>
+        <div>
+          <h2>認識 21 個關鍵點</h2>
+          <p>MediaPipe 怎麼「看見」你的手</p>
+        </div>
+      </div>
+
+      <div class="concept-box">
+        傳統程式要辨認「手」需要寫好幾百行規則。AI 的做法不同：<br>
+        Google 用幾十萬張手部圖片訓練了一個模型，它學會了把每隻手分析成
+        <strong>21 個關鍵點（Landmarks）</strong>，每個點代表一個手部關節。<br><br>
+        每個關鍵點都有 <strong>X、Y、Z 座標</strong>：X 是左右位置，Y 是上下位置，Z 是深度（離鏡頭遠近）。<br>
+        座標用 <em>0.0 ~ 1.0</em> 表示，0 = 畫面最左/最上，1 = 畫面最右/最下（注意攝影機鏡頭會左右翻轉）。
+      </div>
+
+      <div class="code-block">
+        <span class="cm"># 只需要三行，就能拿到所有 21 個關鍵點</span><br>
+        lm = results.multi_hand_landmarks[<span class="num">0</span>].landmark<br>
+        index_tip = lm[<span class="num">8</span>]   <span class="cm"># 食指尖</span><br>
+        <span class="fn">print</span>(index_tip.x, index_tip.y)   <span class="cm"># 例如：0.52, 0.34</span>
+      </div>
+
+      <div class="task-box">
+        <div class="task-title">🔬 觀察任務</div>
+        <ol>
+          <li>把手放進攝影機畫面，看到紫色骨架出現。</li>
+          <li>留意左邊資料欄的 <strong>食指尖 [8]</strong> X 和 Y 數值。</li>
+          <li>把食指移到畫面<strong>最左邊</strong>，X 會接近哪個數值？</li>
+          <li>把食指移到畫面<strong>最上方</strong>，Y 會接近哪個數值？</li>
+        </ol>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">❓ 當食指在畫面<strong>最左邊</strong>時，X 座標接近哪個值？（答案是 0 或 1）</div>
+        <div class="q-input-row">
+          <input class="q-input" id="q1a" type="text" placeholder="輸入數字" />
+          <button class="check-btn" onclick="checkQ('q1a','1','「攝影機鏡頭會左右翻轉！」X 座標向左減少、向右增加')">確認</button>
+        </div>
+        <div class="answer-feedback" id="q1a-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">❓ 當食指舉到畫面<strong>最上方</strong>時，Y 座標接近哪個值？（答案是 0 或 1）</div>
+        <div class="q-input-row">
+          <input class="q-input" id="q1b" type="text" placeholder="輸入數字" />
+          <button class="check-btn" onclick="checkQ('q1b','0','Y 座標向上減少、向下增加')">確認</button>
+        </div>
+        <div class="answer-feedback" id="q1b-fb"></div>
+      </div>
+
+      <div class="nav-row">
+        <button class="nav-btn primary" onclick="goLesson(2)">下一步：讀取座標 →</button>
+      </div>
+    </div>
+
+    <!-- LESSON 2 -->
+    <div class="lesson" id="lesson-2">
+      <div class="lesson-header">
+        <div class="step-badge">2</div>
+        <div>
+          <h2>讀取座標數據</h2>
+          <p>把 0.0～1.0 轉換成真實像素位置</p>
+        </div>
+      </div>
+
+      <div class="concept-box">
+        MediaPipe 輸出的每個關鍵點都有三個屬性：<strong>.x</strong>（左右）、<strong>.y</strong>（上下）、<strong>.z</strong>（深度）。<br>
+        數值範圍是 <strong>0.0 ~ 1.0</strong> 的比例值：0 = 最左/最上，1 = 最右/最下。<br><br>
+        透過索引編號取得想要的點，例如 <em>lm[8]</em> 就是食指尖，<em>lm[0]</em> 是手腕。
+      </div>
+
+      <div class="code-block">
+        <span class="cm"># multi_hand_landmarks[0] = 第一隻識別到的手</span><br>
+        lm = results.multi_hand_landmarks[<span class="num">0</span>].landmark<br><br>
+        <span class="cm"># lm[8] = 食指尖，取其屬性</span><br>
+        <span class="fn">print</span>(lm[<span class="num">8</span>].x)   <span class="cm"># 水平位置 0~1</span><br>
+        <span class="fn">print</span>(lm[<span class="num">8</span>].y)   <span class="cm"># 垂直位置 0~1（0=最上）</span><br>
+        <span class="fn">print</span>(lm[<span class="num">0</span>].y)   <span class="cm"># 手腕垂直位置</span>
+      </div>
+
+      <div class="live-demo">
+        <h4>🟡 食指尖即時位置</h4>
+        <div id="live-output" style="color: var(--yellow);">把手放進畫面…</div>
+      </div>
+
+      <div class="task-box">
+        <div class="task-title">💻 讀懂程式碼 — 共 8 題（★簡單 ★★中等 ★★★困難）</div>
+        <ol>
+          <li>仔細閱讀每題的程式碼片段或說明。</li>
+          <li>所有題目選擇 A / B / C，或填入簡短答案。</li>
+        </ol>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-easy">★ 簡單</span>
+          ❓ <code>results.multi_hand_landmarks[0]</code> 中，<code>[0]</code> 代表什麼？<br>
+          (A) 第一個識別到的手 &nbsp; (B) 第一個關鍵點 &nbsp; (C) X 座標<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2a" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2a','a','multi_hand_landmarks 是一個列表，[0] 取的是第一隻（第一個）識別到的手的所有關鍵點。',3)">確認</button>
+          <span class="q-pts-badge" id="q2a-pts">+3 分</span>
+        </div>
+        <div class="answer-feedback" id="q2a-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-easy">★ 簡單</span>
+          ❓ <code>landmarks[8].y</code> 讀取的是什麼？<br>
+          (A) 食指尖的水平（左右）位置 &nbsp; (B) 食指尖的垂直（上下）位置 &nbsp; (C) 食指的深度<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2b" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2b','b','.y 是垂直（上下）位置，.x 是水平（左右），.z 是深度（遠近）。',3)">確認</button>
+          <span class="q-pts-badge" id="q2b-pts">+3 分</span>
+        </div>
+        <div class="answer-feedback" id="q2b-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-easy">★ 簡單</span>
+          ❓ <code>tip.x = 0.01</code> 代表食指在畫面的哪個位置？<br>
+          (A) 最右邊 &nbsp; (B) 最上方 &nbsp; (C) 最左邊<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2c" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2c','c','x 座標：0 = 最左邊，1 = 最右邊。0.01 接近 0 所以在最左邊。',3)">確認</button>
+          <span class="q-pts-badge" id="q2c-pts">+3 分</span>
+        </div>
+        <div class="answer-feedback" id="q2c-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-medium">★★ 中等</span>
+          ❓ <code>if (tip.y &lt; 0.1)</code> 什麼時候會是 <code>true</code>？<br>
+          (A) 食指在畫面最下方 &nbsp; (B) 食指在畫面最上方 &nbsp; (C) 食指識別失敗<br>
+          <small style="color:#6b7280">提示：y 越小 = 越高</small>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2d" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2d','b','y 越小代表位置越上方。y < 0.1 就是在畫面上方 10% 的範圍內。',7)">確認</button>
+          <span class="q-pts-badge" id="q2d-pts">+7 分</span>
+        </div>
+        <div class="answer-feedback" id="q2d-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-medium">★★ 中等</span>
+          ❓ <code>px = tip.x * 640</code> 中，為什麼要乘以 640？<br>
+          (A) 640 是固定的魔法數字<br>
+          (B) 要從 0~1 的比例值換算成 640px 寬的像素位置<br>
+          (C) 因為總共有 640 個關鍵點<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2e" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2e','b','座標 0~1 是比例，要乘以畫面的實際像素寬度（640），才能知道在螢幕上的真實位置。',7)">確認</button>
+          <span class="q-pts-badge" id="q2e-pts">+7 分</span>
+        </div>
+        <div class="answer-feedback" id="q2e-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-medium">★★ 中等</span>
+          ❓ 食指在正中間（x = 0.5）。以下程式會印出什麼？<br>
+          <code>mirror_x = (1 - tip.x) * 640</code><br>
+          (A) 320 &nbsp; (B) 0 &nbsp; (C) 640<br>
+          <small style="color:#6b7280">提示：先算括號內，再乘以 640</small>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2f" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2f','a','(1 - 0.5) = 0.5，再乘以 640 = 320。這行程式做的是鏡射翻轉，中間翻轉後還是中間。',7)">確認</button>
+          <span class="q-pts-badge" id="q2f-pts">+7 分</span>
+        </div>
+        <div class="answer-feedback" id="q2f-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-hard">★★★ 困難</span>
+          ❓ 這段程式想讀取「手腕」的 Y 座標，但有 Bug，哪裡錯了？<br>
+          <code>wrist_y = lm[8].y</code><br>
+          (A) 手腕是編號 [0]，不是 [8]<br>
+          (B) 應該用 .x 不是 .y<br>
+          (C) 應該寫 landmark 不是 landmarks<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2g" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2g','a','landmarks[8] 是食指尖，手腕是 landmarks[0]。編號搞錯就拿到錯誤的關節了！',10)">確認</button>
+          <span class="q-pts-badge" id="q2g-pts">+10 分</span>
+        </div>
+        <div class="answer-feedback" id="q2g-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-hard">★★★ 困難</span>
+          ❓ 執行時 <code>results.multi_hand_landmarks</code> 是 <code>None</code>，代表什麼？<br>
+          (A) AI 模型壞掉了<br>
+          (B) 攝影機完全沒打開<br>
+          (C) 畫面中目前沒有識別到任何手<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q2h" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q2h','c','multi_hand_landmarks 在沒有手的時候是 None 或空列表。所以程式要先判斷是否有手，才安全取用 [0]。',10)">確認</button>
+          <span class="q-pts-badge" id="q2h-pts">+10 分</span>
+        </div>
+        <div class="answer-feedback" id="q2h-fb"></div>
+      </div>
+
+      <div id="total-score-row">
+        <span class="ts-label">💻 第 2 單元得分</span>
+        <span><span class="ts-val" id="l2-score">0</span> <span class="ts-max">/ 50 分</span></span>
+      </div>
+
+      <div class="nav-row">
+        <button class="nav-btn" onclick="goLesson(1)">← 上一步</button>
+        <button class="nav-btn primary" onclick="goLesson(3)">下一步：識別手勢 →</button>
+      </div>
+    </div>
+
+    <!-- LESSON 3 -->
+    <div class="lesson" id="lesson-3">
+      <div class="lesson-header">
+        <div class="step-badge">3</div>
+        <div>
+          <h2>識別手勢</h2>
+          <p>用座標之間的大小關係判斷手的動作</p>
+        </div>
+      </div>
+
+      <div class="concept-box">
+        AI 輸出的是<strong>數字</strong>，不是「食指舉起了」這種文字。<br>
+        但我們可以自己寫條件：如果<em>食指尖（Y 值）比食指根（Y 值）更小</em>，就代表食指向上伸直。<br><br>
+        記住：<strong>Y 越小 = 越高</strong>。所以「手指往上伸 = 指尖 Y &lt; 根部 Y」。
+      </div>
+
+      <div class="code-block">
+        <span class="cm"># 食指舉起的判斷邏輯</span><br>
+        tip  = lm[<span class="num">8</span>]   <span class="cm"># 食指尖</span><br>
+        base = lm[<span class="num">5</span>]   <span class="cm"># 食指根</span><br>
+        is_up = <span class="hl">tip.y &lt; base.y</span>   <span class="cm"># 尖比根高 = 舉起</span>
+      </div>
+
+      <p style="margin-bottom:12px; font-size:0.95em; color:#94a3b8;">試著做出以下手勢，看看哪張卡片亮起來！</p>
+
+      <div class="gesture-grid">
+        <div class="gesture-card" id="g-index">
+          <div class="g-icon">☝️</div>
+          <div class="g-name">食指舉起</div>
+          <div class="g-rule">[8].y &lt; [5].y</div>
+        </div>
+        <div class="gesture-card" id="g-peace">
+          <div class="g-icon">✌️</div>
+          <div class="g-name">剪刀手</div>
+          <div class="g-rule">[8].y &lt; [5].y<br>AND [12].y &lt; [9].y</div>
+        </div>
+        <div class="gesture-card" id="g-fist">
+          <div class="g-icon">✊</div>
+          <div class="g-name">握拳</div>
+          <div class="g-rule">[8].y &gt; [5].y<br>AND [12].y &gt; [9].y</div>
+        </div>
+        <div class="gesture-card" id="g-open">
+          <div class="g-icon">🖐️</div>
+          <div class="g-name">張開手掌</div>
+          <div class="g-rule">全部 5 根手指<br>的尖都比根高</div>
+        </div>
+        <div class="gesture-card" id="g-thumb">
+          <div class="g-icon">👍</div>
+          <div class="g-name">大拇指向右</div>
+          <div class="g-rule">thumb[4].x &gt;<br>wrist[0].x + 0.12</div>
+        </div>
+        <div class="gesture-card" id="g-pinch">
+          <div class="g-icon">🤏</div>
+          <div class="g-name">捏合</div>
+          <div class="g-rule">distance(<br>[4], [8]) &lt; 0.05</div>
+        </div>
+      </div>
+
+      <div class="task-box">
+        <div class="task-title">🧠 邏輯推理 — 共 8 題（★簡單 ★★中等 ★★★困難）</div>
+        <ol>
+          <li>先對照上方手勢卡片，理解每張卡的識別規則。</li>
+          <li>所有選擇題輸入 A、B 或 C。</li>
+        </ol>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-easy">★ 簡單</span>
+          ❓ 在 MediaPipe 座標系中，<code>y = 0</code> 代表哪個位置？<br>
+          (A) 畫面最下方 &nbsp; (B) 畫面最上方 &nbsp; (C) 畫面正中間<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3a" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3a','b','Y 軸從上往下增加：y=0 是最上方，y=1 是最下方。和螢幕像素座標一樣。',3)">確認</button>
+          <span class="q-pts-badge" id="q3a-pts">+3 分</span>
+        </div>
+        <div class="answer-feedback" id="q3a-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-easy">★ 簡單</span>
+          ❓ 手腕的關鍵點編號是幾號？（填數字）
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3b" type="text" placeholder="填數字" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3b','0','手腕是 lm[0]，從手腕開始編號，依序往各手指延伸。',3)">確認</button>
+          <span class="q-pts-badge" id="q3b-pts">+3 分</span>
+        </div>
+        <div class="answer-feedback" id="q3b-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-easy">★ 簡單</span>
+          ❓ 此刻 <code>lm[8].y = 0.2</code>，<code>lm[5].y = 0.6</code>，<br>
+          <code>lm[8].y &lt; lm[5].y</code> 的結果是 true 還是 false？食指是舉起還是放下？<br>
+          (A) false，放下 &nbsp; (B) true，放下 &nbsp; (C) true，舉起<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3c" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3c','c','0.2 < 0.6 是 true。指尖 y 比根部 y 小 = 指尖位置更高 = 食指舉起了！',3)">確認</button>
+          <span class="q-pts-badge" id="q3c-pts">+3 分</span>
+        </div>
+        <div class="answer-feedback" id="q3c-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-medium">★★ 中等</span>
+          ❓ 下面哪個條件正確表示「食指<strong>放下（沒有舉起）</strong>」？<br>
+          (A) <code>lm[8].y &lt; lm[5].y</code><br>
+          (B) <code>lm[8].y &gt; lm[5].y</code><br>
+          (C) <code>lm[8].x &gt; lm[5].x</code><br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3d" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3d','b','放下 = 指尖位置比根部低 = y 更大。所以是 lm[8].y > lm[5].y。',7)">確認</button>
+          <span class="q-pts-badge" id="q3d-pts">+7 分</span>
+        </div>
+        <div class="answer-feedback" id="q3d-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-medium">★★ 中等</span>
+          ❓ 「剪刀手」需要食指 <strong>and</strong> 中指都舉起。以下哪個寫法正確？<br>
+          (A) <code>lm[8].y &lt; lm[5].y or lm[12].y &lt; lm[9].y</code>（用 or）<br>
+          (B) <code>lm[8].y &lt; lm[5].y and lm[12].y &lt; lm[9].y</code>（用 and）<br>
+          (C) <code>lm[8].y &lt; lm[12].y</code><br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3e" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3e','b','「兩個都要成立」用 and。or 是「其中一個成立就夠」，剪刀手必須兩根手指同時舉起。',7)">確認</button>
+          <span class="q-pts-badge" id="q3e-pts">+7 分</span>
+        </div>
+        <div class="answer-feedback" id="q3e-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-medium">★★ 中等</span>
+          ❓ 「大拇指向右」用 <strong>X 座標</strong>判斷，而不是 Y 座標。為什麼？<br>
+          (A) 大拇指沒有 Y 座標<br>
+          (B) 大拇指是水平伸出的，要看左右位置（X），不是上下（Y）<br>
+          (C) Y 座標精度不夠<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3f" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3f','b','手勢要看哪個方向的動作：水平動作看 X，垂直動作看 Y。大拇指向右是水平方向，所以比較 X。',7)">確認</button>
+          <span class="q-pts-badge" id="q3f-pts">+7 分</span>
+        </div>
+        <div class="answer-feedback" id="q3f-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-hard">★★★ 困難</span>
+          ❓ 這段程式識別的是哪個手勢？<br>
+          <code>lm[8].y &lt; lm[5].y and lm[12].y &gt; lm[9].y and lm[16].y &gt; lm[13].y and lm[20].y &gt; lm[17].y</code><br>
+          (A) 張開手掌（五指全開）<br>
+          (B) 只有食指舉起，其餘放下<br>
+          (C) 剪刀手（食指＋中指）<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3g" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3g','b','第一個條件：食指舉起（lm[8].y < lm[5].y）。後三個條件：中指、無名指、小指都放下（y > 根部）。= 只有食指。',10)">確認</button>
+          <span class="q-pts-badge" id="q3g-pts">+10 分</span>
+        </div>
+        <div class="answer-feedback" id="q3g-fb"></div>
+      </div>
+
+      <div class="question-block">
+        <div class="q-text">
+          <span class="diff-badge diff-hard">★★★ 困難</span>
+          ❓ 下面程式想識別「握拳（所有手指都放下）」，但有 Bug：<br>
+          <code>is_fist = lm[8].y &gt; lm[5].y or lm[12].y &gt; lm[9].y</code><br>
+          問題在哪？<br>
+          (A) 應該用 <code>and</code> 不是 <code>or</code>，兩個條件都要成立才算握拳<br>
+          (B) 應該用 <code>&lt;</code> 不是 <code>&gt;</code><br>
+          (C) 少了 Z 座標的判斷<br>
+        </div>
+        <div class="q-input-row">
+          <input class="q-input" id="q3h" type="text" placeholder="A / B / C" style="width:90px" />
+          <button class="check-btn" onclick="checkQ('q3h','a','用 or 只要「其中一根手指放下」就是 True，不夠嚴格。握拳需要所有手指同時放下，要用 and。',10)">確認</button>
+          <span class="q-pts-badge" id="q3h-pts">+10 分</span>
+        </div>
+        <div class="answer-feedback" id="q3h-fb"></div>
+      </div>
+
+      <div id="total-score-row" style="margin-top:20px">
+        <span class="ts-label">🧠 第 3 單元得分</span>
+        <span><span class="ts-val" id="l3-score">0</span> <span class="ts-max">/ 50 分</span></span>
+      </div>
+
+      <div class="nav-row">
+        <button class="nav-btn" onclick="goLesson(2)">← 上一步</button>
+        <button class="nav-btn primary" onclick="goLesson(4)">最後一步：自己寫！→</button>
+      </div>
+    </div>
+
+    <!-- LESSON 4 -->
+    <div class="lesson" id="lesson-4">
+      <div class="lesson-header">
+        <div class="step-badge">4</div>
+        <div>
+          <h2>自己設計手勢</h2>
+          <p>用 Python 寫你自己的識別條件</p>
+        </div>
+      </div>
+
+      <div class="concept-box">
+        現在你掌握了所有工具：<strong>21 個關鍵點</strong>的座標，以及怎麼用<strong>比較大小</strong>判斷手勢。<br>
+        下面的程式碼裡，<em>lm</em> 就是 landmarks 列表，你可以用 <em>lm[0]</em> 到 <em>lm[20]</em> 取得任何一個點。<br>
+        修改 <strong>my_gesture()</strong> 函式中的條件，讓它識別你想要的手勢！
+      </div>
+
+      <div class="code-block" style="margin-bottom:8px">
+        <span class="cm"># 關鍵點編號速查：</span><br>
+        <span class="cm"># lm[0]  手腕      lm[4]  大拇指尖   lm[8]  食指尖</span><br>
+        <span class="cm"># lm[12] 中指尖    lm[16] 無名指尖   lm[20] 小指尖</span><br>
+        <span class="cm"># lm[5]  食指根    lm[9]  中指根     lm[13] 無名指根</span><br>
+        <span class="cm"># .x .y .z — 每個點都有座標，範圍 0.0 ~ 1.0</span>
+      </div>
+
+      <div class="task-box">
+        <div class="task-title">✏️ 程式任務</div>
+        <ul>
+          <li>修改下面的 <code>my_gesture()</code> 函式，讓它在你設計的手勢時 return <code>True</code></li>
+          <li>按下「執行」後，做出你設計的手勢，看看右邊是否亮起。</li>
+          <li>把 <code>name</code> 換成你手勢的名字。</li>
+        </ul>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items:start;">
+        <div>
+          <textarea id="custom-code">def my_gesture(lm):
+    # 在這裡寫你的條件
+    # 例如：食指舉起
+    return lm[8].y < lm[5].y
+
+# 你的手勢名稱
+name = "食指舉起 ☝️"</textarea>
+          <br>
+          <button id="run-btn" onclick="runCustom()">▶ 執行</button>
+          <div id="run-error"></div>
+        </div>
+        <div>
+          <div id="custom-result">
+            <span style="color:#4b5563">按執行後，做出你的手勢…</span>
+          </div>
+          <div id="custom-debug" style="margin-top:8px; font-size:0.78em; color:#6b7280; font-family:monospace; line-height:1.8;"></div>
+        </div>
+      </div>
+
+      <div class="concept-box" style="margin-top:20px; border-left-color: var(--green);">
+        <strong>🎯 挑戰想法：</strong><br>
+        ① 只舉無名指：<em>lm[16].y &lt; lm[13].y and lm[8].y &gt; lm[5].y</em><br>
+        ② 捏合：<em>abs(lm[4].x - lm[8].x) &lt; 0.05</em><br>
+        ③ 手倒過來（下揮）：<em>lm[0].y &lt; lm[8].y</em>
+      </div>
+
+      <div class="nav-row">
+        <button class="nav-btn" onclick="goLesson(3)">← 上一步</button>
+        <div style="flex:1"></div>
+        <button class="nav-btn primary" onclick="goLesson(5)">⑤ 闖關遊戲 →</button>
+      </div>
+    </div>
+
+    <!-- LESSON 5 -->
+    <div class="lesson" id="lesson-5">
+      <div class="lesson-header">
+        <div class="step-badge" style="background:linear-gradient(135deg,#f97316,#ef4444)">5</div>
+        <div>
+          <h2>🎮 無限闖關遊戲</h2>
+          <p>用你學到的手勢接受 AI 挑戰！連對越多，加分越高！</p>
+        </div>
+      </div>
+
+      <!-- LOCKED STATE (hidden) -->
+      <div id="lab-locked" style="display:none"></div>
+
+      <!-- LAB (shown after unlock) -->
+      <div id="lab-board">
+        <div class="lab-stats-row">
+          <div class="lab-stat"><div class="s-val" id="lab-score-val">0</div><div class="s-lbl">得分</div></div>
+          <div class="lab-stat"><div class="s-val" id="lab-streak-val">0</div><div class="s-lbl">🔥 連續正確</div></div>
+        </div>
+
+        <!-- Start screen -->
+        <div id="lab-start-screen" class="lab-start-area">
+          <p style="color:#94a3b8;margin-bottom:12px">螢幕會顯示 Python 條件，讀懂它、用手做出來！<br>每題 10 秒，共 14 關，從簡單到困難 🔥</p>
+          <div id="lab-final-score" style="color:var(--yellow);font-size:1.1em;margin-bottom:12px"></div>
+          <button class="nav-btn primary" style="font-size:1.1em;padding:14px 40px" onclick="startLab()">🎮 開始闖關</button>
+        </div>
+
+        <!-- Active lab -->
+        <div id="lab-active-area" style="display:none">
+          <div class="challenge-card">
+            <div class="c-hint" id="lab-gesture-emoji">✋</div>
+            <div class="c-label">讓以下 Python 條件為 True：</div>
+            <pre class="c-code" id="lab-gesture-code">lm[8].y &lt; lm[5].y</pre>
+            <div class="lab-difficulty-badge" id="lab-diff-label">Level 1 ★</div>
+          </div>
+          <div class="timer-track"><div id="lab-timer-bar"></div></div>
+          <div id="lab-feedback"></div>
+          <div style="text-align:right;margin-top:6px">
+            <button class="nav-btn" onclick="stopLab()">⏹ 結束</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-row">
+        <button class="nav-btn" onclick="goLesson(4)">← 上一步</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const video     = document.getElementById('video');
+const camCanvas = document.getElementById('cam-canvas');
+const camCtx    = camCanvas.getContext('2d');
+
+let customFn = null;
+let customName = "我的手勢";
+let hands = null;
+let camera = null;
+
+function initCamera() {
+  hands = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.72,
+    minTrackingConfidence: 0.6,
+  });
+  hands.onResults(onResults);
+
+  camera = new Camera(video, {
+    onFrame: async () => { if (hands) await hands.send({ image: video }); },
+    width: 640, height: 480,
+  });
+
+  camera.start().catch(err => {
+    document.getElementById('cam-status').textContent = '❌ 無法開啟攝影機：' + err.message;
+    console.error(err);
+  });
+}
+
+function onResults(results) {
+  camCtx.clearRect(0, 0, 640, 480);
+
+  // Draw mirrored camera image
+  camCtx.save();
+  camCtx.translate(640, 0);
+  camCtx.scale(-1, 1);
+  camCtx.drawImage(results.image, 0, 0, 640, 480);
+  camCtx.restore();
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lm = results.multiHandLandmarks[0];
+    // Mirror landmark x coordinates for drawing (raw coords stay for detection logic)
+    const mlm = lm.map(p => ({ x: 1 - p.x, y: p.y, z: p.z }));
+
+    drawConnectors(camCtx, mlm, HAND_CONNECTIONS, { color: '#7c3aed', lineWidth: 2 });
+    drawLandmarks(camCtx, mlm, { color: '#fbbf24', lineWidth: 1, radius: 3 });
+
+    // Green dot on index fingertip (mirrored position)
+    camCtx.beginPath();
+    camCtx.arc((1 - lm[8].x) * 640, lm[8].y * 480, 8, 0, Math.PI * 2);
+    camCtx.fillStyle = '#34d399cc';
+    camCtx.fill();
+
+    updateDataPanel(lm);
+    updateLesson2Live(lm);
+    updateLesson3Gestures(lm);
+    updateLesson4(lm);
+    updateLabLesson(lm);
+
+    document.getElementById('cam-status').textContent = '✅ 手部識別中…';
+    document.getElementById('cam-status').className = 'ok';
+  } else {
+    document.getElementById('cam-status').textContent = '👋 請將手放入畫面';
+    document.getElementById('cam-status').className = '';
+    clearDataPanel();
+    if (labActive && waitingForHandLeave) {
+      nextChallenge();
+    }
+  }
+}
+
+function fmt(v) { return v !== undefined ? v.toFixed(3) : '—'; }
+
+function updateDataPanel(lm) {
+  const pts = [0, 4, 5, 8, 9, 12, 13, 16, 17, 20];
+  for (const i of pts) {
+    document.getElementById('d-' + i + 'x').textContent = fmt(lm[i].x);
+    document.getElementById('d-' + i + 'y').textContent = fmt(lm[i].y);
+  }
+}
+function clearDataPanel() {
+  const pts = [0, 4, 5, 8, 9, 12, 13, 16, 17, 20];
+  for (const i of pts) {
+    document.getElementById('d-' + i + 'x').textContent = '—';
+    document.getElementById('d-' + i + 'y').textContent = '—';
+  }
+}
+
+function updateLesson2Live(lm) {
+  const el = document.getElementById('live-output');
+  if (!el) return;
+  el.innerHTML =
+    `比例值：X = <b>${fmt(lm[8].x)}</b>，Y = <b>${fmt(lm[8].y)}</b><br>
+     像素值：X = <b>${(lm[8].x * 640).toFixed(0)}px</b>，Y = <b>${(lm[8].y * 480).toFixed(0)}px</b>`;
+}
+
+function fingerUp(lm, tip, base) { return lm[tip].y < lm[base].y; }
+function dist(a, b) { return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+
+function updateLesson3Gestures(lm) {
+  const i = fingerUp(lm, 8, 5);
+  const m = fingerUp(lm, 12, 9);
+  const r = fingerUp(lm, 16, 13);
+  const p = fingerUp(lm, 20, 17);
+  const thumbR = lm[4].x > lm[0].x + 0.12;
+  const pinch  = dist(lm[4], lm[8]) < 0.05;
+
+  setCard('g-index', i && !m);
+  setCard('g-peace',  i && m && !r && !p);
+  setCard('g-fist',   !i && !m && !r && !p);
+  setCard('g-open',   i && m && r && p);
+  setCard('g-thumb',  thumbR && !i && !m);
+  setCard('g-pinch',  pinch);
+}
+function setCard(id, active) {
+  document.getElementById(id).classList.toggle('detected', active);
+}
+
+function pythonToJS(pyCode) {
+  const lines = pyCode.split('\n');
+  const out = [];
+  let inDef = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) { out.push(''); continue; }
+    const isIndented = /^\s/.test(line);
+    if (inDef && !isIndented) { out.push('}'); inDef = false; }
+    if (trimmed.startsWith('#')) { out.push(line.replace(/^(\s*)#/, '$1//')); continue; }
+    const defMatch = trimmed.match(/^def\s+(\w+)\s*\(([^)]*)\)\s*:/);
+    if (defMatch) {
+      const fnName = defMatch[1].replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+      out.push(`function ${fnName}(${defMatch[2]}) {`);
+      inDef = true;
+      continue;
+    }
+    let conv = trimmed;
+    conv = conv.replace(/\babs\(/g, 'Math.abs(');
+    conv = conv.replace(/\bTrue\b/g, 'true');
+    conv = conv.replace(/\bFalse\b/g, 'false');
+    conv = conv.replace(/\band\b/g, '&&');
+    conv = conv.replace(/\bor\b/g, '||');
+    conv = conv.replace(/\bnot\s+/g, '!');
+    conv = conv.replace(/#(.*)$/, '//$1');
+    if (!conv.endsWith(';')) conv += ';';
+    if (inDef) { out.push('  ' + conv); }
+    else if (/^name\s*=/.test(conv)) { out.push('const ' + conv); }
+    else { out.push(conv); }
+  }
+  if (inDef) out.push('}');
+  return out.join('\n');
+}
+
+function runCustom() {
+  const code = document.getElementById('custom-code').value;
+  document.getElementById('run-error').textContent = '';
+  try {
+    const jsCode = pythonToJS(code);
+    const wrapped = new Function(`
+      ${jsCode}
+      return { fn: myGesture, name: typeof name !== 'undefined' ? name : '我的手勢' };
+    `);
+    const obj = wrapped();
+    customFn   = obj.fn;
+    customName = obj.name;
+    document.getElementById('custom-result').innerHTML =
+      `<span style="color:#6b7280">做出「${customName}」看看！</span>`;
+  } catch(e) {
+    document.getElementById('run-error').textContent = '❌ 錯誤：' + e.message;
+  }
+}
+
+function updateLesson4(lm) {
+  if (!customFn) return;
+  try {
+    const result = customFn(lm);
+    document.getElementById('custom-result').innerHTML = result
+      ? `<span style="color:var(--green); font-size:1.4em">✅ 識別到：${customName}</span>`
+      : `<span style="color:#4b5563">做出「${customName}」…</span>`;
+    document.getElementById('custom-debug').innerHTML =
+      `lm[8].y=${fmt(lm[8].y)} lm[5].y=${fmt(lm[5].y)} lm[4].x=${fmt(lm[4].x)}<br>` +
+      `lm[12].y=${fmt(lm[12].y)} lm[16].y=${fmt(lm[16].y)} lm[0].x=${fmt(lm[0].x)}`;
+  } catch(e) {
+    document.getElementById('run-error').textContent = '❌ 執行錯誤：' + e.message;
+  }
+}
+
+let currentLesson = 1;
+function goLesson(n) {
+  document.getElementById(`lesson-${currentLesson}`).classList.remove('active');
+  document.querySelectorAll('.pill')[currentLesson - 1].classList.remove('active');
+  currentLesson = n;
+  document.getElementById(`lesson-${n}`).classList.add('active');
+  document.querySelectorAll('.pill')[n - 1].classList.add('active');
+  document.getElementById('right-panel').scrollTop = 0;
+  if (n === 5) applyLabUnlock();
+}
+
+// ── SCORE SYSTEM ──
+let totalScore = 0;
+const answeredSet = new Set(); // prevent double-counting
+
+const lessonQuestions = {
+  'q2a':3,'q2b':3,'q2c':3,'q2d':7,'q2e':7,'q2f':7,'q2g':10,'q2h':10,
+  'q3a':3,'q3b':3,'q3c':3,'q3d':7,'q3e':7,'q3f':7,'q3g':10,'q3h':10
+};
+
+function updateScoreDisplay() {
+  const badge = document.getElementById('score-badge');
+  badge.textContent = '⭐ ' + totalScore + ' / 100 分';
+  badge.classList.add('pop');
+  setTimeout(() => badge.classList.remove('pop'), 200);
+  // Update per-lesson subtotals
+  const l2 = ['q2a','q2b','q2c','q2d','q2e','q2f','q2g','q2h']
+    .filter(id => answeredSet.has(id)).reduce((s,id)=>s+lessonQuestions[id],0);
+  const l3 = ['q3a','q3b','q3c','q3d','q3e','q3f','q3g','q3h']
+    .filter(id => answeredSet.has(id)).reduce((s,id)=>s+lessonQuestions[id],0);
+  const l2el = document.getElementById('l2-score');
+  const l3el = document.getElementById('l3-score');
+  if (l2el) l2el.textContent = l2;
+  if (l3el) l3el.textContent = l3;
+  // Unlock lesson-5 lab
+  const lockedDisp = document.getElementById('locked-score-display');
+  const lockBar    = document.getElementById('lock-progress-bar');
+  if (lockedDisp) lockedDisp.textContent = totalScore;
+  if (lockBar)    lockBar.style.width = Math.min(100, totalScore) + '%';
+  applyLabUnlock();
+}
+
+function checkQ(inputId, answer, explanation, points) {
+  const input = document.getElementById(inputId);
+  const fb    = document.getElementById(inputId + '-fb');
+  const ptsEl = document.getElementById(inputId + '-pts');
+  const val   = input.value.trim().replace(/\s/g,'').toLowerCase();
+  const ans   = String(answer).replace(/\s/g,'').toLowerCase();
+  if (val === ans) {
+    input.className = 'q-input correct';
+    fb.className = 'answer-feedback ok';
+    fb.textContent = '✅ 正確！' + explanation;
+    if (points && !answeredSet.has(inputId)) {
+      answeredSet.add(inputId);
+      totalScore += points;
+      updateScoreDisplay();
+      if (ptsEl) { ptsEl.textContent = '+' + points + ' 分 ✓'; ptsEl.className = 'q-pts-badge earned'; }
+    }
+  } else {
+    input.className = 'q-input wrong';
+    fb.className = 'answer-feedback fail';
+    fb.textContent = '❌ 再試試看。提示：' + explanation;
+  }
+}
+
+// ── LESSON 5 LAB ──
+function applyLabUnlock() {}
+// (lock removed — lab always available)
+
+// 每個條件都精確指定手勢，避免隨意手勢誤觸發
+const CHALLENGES = [
+  // ── Level 1：2 個條件，指定兩根手指 ─────────────────────────
+  { level:1, hint:'☝️',
+    code:'lm[8].y < lm[5].y\nand lm[12].y > lm[9].y',
+    detect: lm => fingerUp(lm,8,5) && !fingerUp(lm,12,9) },
+  { level:1, hint:'✊',
+    code:'lm[8].y > lm[5].y\nand lm[12].y > lm[9].y',
+    detect: lm => !fingerUp(lm,8,5) && !fingerUp(lm,12,9) },
+  { level:1, hint:'🤙',
+    code:'lm[20].y < lm[17].y\nand lm[8].y > lm[5].y',
+    detect: lm => fingerUp(lm,20,17) && !fingerUp(lm,8,5) },
+
+  // ── Level 2：3 個條件 ────────────────────────────────────────
+  { level:2, hint:'✌️',
+    code:'lm[8].y < lm[5].y\nand lm[12].y < lm[9].y\nand lm[16].y > lm[13].y',
+    detect: lm => fingerUp(lm,8,5) && fingerUp(lm,12,9) && !fingerUp(lm,16,13) },
+  { level:2, hint:'🖖',
+    code:'lm[8].y < lm[5].y\nand lm[12].y < lm[9].y\nand lm[20].y > lm[17].y',
+    detect: lm => fingerUp(lm,8,5) && fingerUp(lm,12,9) && !fingerUp(lm,20,17) },
+  { level:2, hint:'🤙',
+    code:'lm[20].y < lm[17].y\nand lm[8].y > lm[5].y\nand lm[12].y > lm[9].y',
+    detect: lm => fingerUp(lm,20,17) && !fingerUp(lm,8,5) && !fingerUp(lm,12,9) },
+
+  // ── Level 3：4 個條件，指定全部四根主要手指 ─────────────────
+  { level:3, hint:'☝️',
+    code:'lm[8].y < lm[5].y\nand lm[12].y > lm[9].y\nand lm[16].y > lm[13].y\nand lm[20].y > lm[17].y',
+    detect: lm => fingerUp(lm,8,5) && !fingerUp(lm,12,9) && !fingerUp(lm,16,13) && !fingerUp(lm,20,17) },
+  { level:3, hint:'✊',
+    code:'lm[8].y > lm[5].y\nand lm[12].y > lm[9].y\nand lm[16].y > lm[13].y\nand lm[20].y > lm[17].y',
+    detect: lm => !fingerUp(lm,8,5) && !fingerUp(lm,12,9) && !fingerUp(lm,16,13) && !fingerUp(lm,20,17) },
+  { level:3, hint:'✌️',
+    code:'lm[8].y < lm[5].y\nand lm[12].y < lm[9].y\nand lm[16].y > lm[13].y\nand lm[20].y > lm[17].y',
+    detect: lm => fingerUp(lm,8,5) && fingerUp(lm,12,9) && !fingerUp(lm,16,13) && !fingerUp(lm,20,17) },
+  { level:3, hint:'🖐️',
+    code:'lm[8].y < lm[5].y\nand lm[12].y < lm[9].y\nand lm[16].y < lm[13].y\nand lm[20].y < lm[17].y',
+    detect: lm => fingerUp(lm,8,5) && fingerUp(lm,12,9) && fingerUp(lm,16,13) && fingerUp(lm,20,17) },
+
+  // ── Level 4：5 個條件，加入大拇指或距離判斷 ─────────────────
+  { level:4, hint:'🤘',
+    code:'lm[8].y < lm[5].y\nand lm[20].y < lm[17].y\nand lm[12].y > lm[9].y\nand lm[16].y > lm[13].y\nand lm[4].x > lm[0].x + 0.1',
+    detect: lm => fingerUp(lm,8,5) && fingerUp(lm,20,17) && !fingerUp(lm,12,9) && !fingerUp(lm,16,13) && lm[4].x > lm[0].x + 0.1 },
+  { level:4, hint:'🤏',
+    code:'abs(lm[4].x - lm[8].x) < 0.06\nand lm[12].y > lm[9].y\nand lm[16].y > lm[13].y\nand lm[20].y > lm[17].y',
+    detect: lm => Math.abs(lm[4].x - lm[8].x) < 0.06 && !fingerUp(lm,12,9) && !fingerUp(lm,16,13) && !fingerUp(lm,20,17) },
+
+  // ── Level 5：5 個條件，包含大拇指位置 ───────────────────────
+  { level:5, hint:'👍',
+    code:'lm[4].x > lm[0].x + 0.15\nand lm[8].y > lm[5].y\nand lm[12].y > lm[9].y\nand lm[16].y > lm[13].y\nand lm[20].y > lm[17].y',
+    detect: lm => lm[4].x > lm[0].x + 0.15 && !fingerUp(lm,8,5) && !fingerUp(lm,12,9) && !fingerUp(lm,16,13) && !fingerUp(lm,20,17) },
+  { level:5, hint:'🤙',
+    code:'lm[20].y < lm[17].y\nand lm[4].x > lm[0].x + 0.1\nand lm[8].y > lm[5].y\nand lm[12].y > lm[9].y\nand lm[16].y > lm[13].y',
+    detect: lm => fingerUp(lm,20,17) && lm[4].x > lm[0].x + 0.1 && !fingerUp(lm,8,5) && !fingerUp(lm,12,9) && !fingerUp(lm,16,13) },
+];
+
+let labActive          = false;
+let waitingForHandLeave = false;
+let labScore           = 0;
+let labStreak          = 0;
+let challengeIndex     = 0;
+let currentChallenge   = null;
+let timerInterval      = null;
+let timeLeft           = 0;
+const TOTAL_TIME       = 10;
+
+function startLab() {
+  labScore = 0; labStreak = 0; challengeIndex = 0; waitingForHandLeave = false;
+  document.getElementById('lab-start-screen').style.display = 'none';
+  document.getElementById('lab-active-area').style.display  = '';
+  labActive = true;
+  nextChallenge();
+}
+
+function nextChallenge() {
+  waitingForHandLeave  = false;
+  currentChallenge     = CHALLENGES[challengeIndex % CHALLENGES.length];
+  challengeIndex++;
+  timeLeft = TOTAL_TIME;
+
+  document.getElementById('lab-gesture-emoji').textContent = '？';
+  document.getElementById('lab-gesture-code').textContent  = currentChallenge.code;
+  document.getElementById('lab-feedback').textContent = '';
+  document.getElementById('lab-feedback').style.color = '';
+
+  const lvl = currentChallenge.level;
+  const stars = '★'.repeat(lvl);
+  const progress = ((challengeIndex - 1) % CHALLENGES.length + 1) + ' / ' + CHALLENGES.length;
+  document.getElementById('lab-diff-label').textContent =
+    'Level ' + lvl + '  ' + stars + '  （' + progress + '）' +
+    (labStreak > 0 ? '  🔥×' + labStreak : '');
+
+  let hintShown = false;
+  clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timeLeft = Math.max(0, timeLeft - 0.1);
+    updateTimerBar(TOTAL_TIME);
+    if (!hintShown && timeLeft <= 1) {
+      hintShown = true;
+      document.getElementById('lab-gesture-emoji').textContent = currentChallenge.hint;
+    }
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      labStreak = 0;
+      updateLabStats();
+      waitingForHandLeave = true;
+      document.getElementById('lab-feedback').textContent  = '⏰ 時間到！請將手移出畫面…';
+      document.getElementById('lab-feedback').style.color = '#f87171';
+    }
+  }, 100);
+}
+
+function updateTimerBar(maxT) {
+  const pct = (timeLeft / maxT) * 100;
+  const bar = document.getElementById('lab-timer-bar');
+  bar.style.width      = pct + '%';
+  bar.style.background = pct > 50 ? '#34d399' : pct > 25 ? '#fbbf24' : '#f87171';
+}
+
+function updateLabStats() {
+  document.getElementById('lab-score-val').textContent  = labScore;
+  document.getElementById('lab-streak-val').textContent = labStreak;
+}
+
+function updateLabLesson(lm) {
+  if (!labActive || !currentChallenge || waitingForHandLeave) return;
+  if (currentChallenge.detect(lm)) {
+    clearInterval(timerInterval);
+    const pts = 10 + labStreak * 2;
+    labScore += pts; labStreak++;
+    updateLabStats();
+    waitingForHandLeave = true;
+    document.getElementById('lab-feedback').textContent  = '✅ 正確！+' + pts + ' 分　請將手移出畫面…';
+    document.getElementById('lab-feedback').style.color = '#34d399';
+  }
+}
+
+function stopLab() {
+  labActive = false; waitingForHandLeave = false;
+  clearInterval(timerInterval);
+  document.getElementById('lab-start-screen').style.display = '';
+  document.getElementById('lab-active-area').style.display  = 'none';
+  document.getElementById('lab-final-score').textContent    = '上次得分：' + labScore + ' 分';
+}
+
+document.getElementById('start-btn').onclick = () => {
+  const btn = document.getElementById('start-btn');
+  btn.textContent = '⏳ 載入中…';
+  btn.disabled = true;
+  document.getElementById('intro-screen').style.display = 'none';
+  try {
+    initCamera();
+  } catch(e) {
+    document.getElementById('cam-status').textContent = '❌ 初始化失敗：' + e.message;
+    console.error(e);
+  }
+};
+</script>
+</body>
+</html>

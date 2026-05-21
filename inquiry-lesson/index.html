@@ -1399,7 +1399,7 @@
             <strong id="demo-gesture">尚未偵測</strong>
             <span id="demo-rule">等待手部進入畫面</span>
           </div>
-          <div class="demo-data" aria-label="全部 landmark 即時資料">
+          <div class="demo-data" aria-label="手腕、指根與指尖 landmark 即時資料">
             <table>
               <thead>
                 <tr><th>點</th><th>x</th><th>y</th><th>z</th></tr>
@@ -1932,11 +1932,17 @@
   </main>
   <script>
     const demoPoints = [
-      "手腕", "拇指根", "拇指 1", "拇指 2", "拇指尖",
-      "食指根", "食指 1", "食指 2", "食指尖",
-      "中指根", "中指 1", "中指 2", "中指尖",
-      "無名指根", "無名指 1", "無名指 2", "無名指尖",
-      "小指根", "小指 1", "小指 2", "小指尖"
+      { index: 0, name: "手腕" },
+      { index: 1, name: "拇指根" },
+      { index: 4, name: "拇指尖" },
+      { index: 5, name: "食指根" },
+      { index: 8, name: "食指尖" },
+      { index: 9, name: "中指根" },
+      { index: 12, name: "中指尖" },
+      { index: 13, name: "無名指根" },
+      { index: 16, name: "無名指尖" },
+      { index: 17, name: "小指根" },
+      { index: 20, name: "小指尖" }
     ];
 
     const demoRows = [];
@@ -1947,7 +1953,7 @@
     function initDemoTable() {
       const body = document.getElementById("demo-landmarks");
       if (!body || body.children.length) return;
-      demoPoints.forEach((name, index) => {
+      demoPoints.forEach(({ index, name }) => {
         const row = document.createElement("tr");
         row.innerHTML = `<td>${index} ${name}</td><td>—</td><td>—</td><td>—</td>`;
         body.appendChild(row);
@@ -1978,9 +1984,10 @@
     }
 
     function updateDemoData(lm) {
-      lm.forEach((point, index) => {
+      demoPoints.forEach(({ index }) => {
+        const point = lm[index];
         const row = demoRows[index];
-        if (!row) return;
+        if (!point || !row) return;
         row.children[1].textContent = demoFmt(point.x);
         row.children[2].textContent = demoFmt(point.y);
         row.children[3].textContent = demoFmt(point.z);

@@ -1278,6 +1278,39 @@
       font-size: 15px;
     }
 
+    .page-qr {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 20;
+      display: grid;
+      gap: 6px;
+      width: 128px;
+      padding: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 8px;
+      color: #111827;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+      text-align: center;
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .page-qr img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+    }
+
+    .page-qr span {
+      color: #111827;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
     @media (max-width: 980px) {
       header,
       .section-head,
@@ -1327,11 +1360,25 @@
       .demo-side {
         grid-template-rows: auto auto 240px;
       }
+
+      .page-qr {
+        right: 10px;
+        bottom: 10px;
+        width: 96px;
+        padding: 7px;
+      }
+
+      .page-qr span {
+        font-size: 10px;
+      }
     }
   </style>
 </head>
 <body>
-  <a href="index.html" class="back">返回首頁</a>
+  <a class="page-qr" href="https://pcms-tom.github.io/gesture-recognition-class/inquiry-lesson/" target="_blank" rel="noopener" aria-label="打開本頁 GitHub Pages 連結">
+    <img src="qr-inquiry-lesson.svg" alt="本頁 GitHub Pages 二維碼">
+    <span>掃碼開啟</span>
+  </a>
   <details class="camera-widget">
     <summary>手勢識別鏡頭</summary>
     <div class="camera-panel">

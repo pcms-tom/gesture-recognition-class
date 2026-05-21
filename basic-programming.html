@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Python MediaPipe 手勢識別任務</title>
+  <link rel="icon" href="data:,">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    * { margin: 0; }
+
+    :root {
+      --bg: #0b1020;
+      --surface: #11182b;
+      --surface-2: #17213a;
+      --ink: #e7eefc;
+      --muted: #9fb0cf;
+      --line: rgba(255, 255, 255, 0.14);
+      --strong: #ffffff;
+      --blue: #38bdf8;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #fb7185;
+      --code: #080c16;
+      --radius: 8px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+        var(--bg);
+      background-size: 40px 40px;
+      line-height: 1.7;
+    }
+
+    a { color: inherit; }
+
+    .back {
+      position: absolute;
+      left: 18px;
+      top: 14px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 64px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+      gap: 28px;
+      align-items: stretch;
+      min-height: 520px;
+      padding: 28px 0 42px;
+    }
+
+    .hero-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .label {
+      width: fit-content;
+      color: var(--blue);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    h1 {
+      max-width: 780px;
+      color: var(--strong);
+      font-size: clamp(2.25rem, 6vw, 4.8rem);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 700px;
+      color: var(--muted);
+      font-size: clamp(1rem, 2vw, 1.15rem);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--strong);
+      background: var(--surface-2);
+      text-decoration: none;
+      font-weight: 800;
+    }
+
+    .btn.primary {
+      border-color: transparent;
+      background: #0ea5e9;
+      color: #04111f;
+    }
+
+    .hero-panel,
+    .card,
+    .task,
+    .code-card,
+    details {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(17, 24, 43, 0.92);
+    }
+
+    .hero-panel {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+      min-height: 460px;
+    }
+
+    .panel-top,
+    .panel-bottom {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .panel-bottom {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+    }
+
+    .hand-demo {
+      display: grid;
+      place-items: center;
+      min-height: 330px;
+      background:
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+        #070b15;
+      background-size: 32px 32px;
+    }
+
+    .hand-demo svg {
+      width: min(88%, 330px);
+      height: auto;
+    }
+
+    .bone { stroke: #60a5fa; stroke-width: 8; stroke-linecap: round; fill: none; }
+    .point { fill: #111827; stroke: rgba(251, 191, 36, 0.82); stroke-width: 2.4; }
+    .point.key { stroke: var(--yellow); stroke-width: 3.4; }
+    .point.tip { stroke: var(--green); fill: rgba(52,211,153,0.16); stroke-width: 3.4; }
+    .num { fill: var(--strong); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 12px 0;
+      background: rgba(11, 16, 32, 0.92);
+      backdrop-filter: blur(10px);
+      border-block: 1px solid var(--line);
+    }
+
+    nav a {
+      flex: 0 0 auto;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    section { padding: 54px 0 0; }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.45fr);
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      color: var(--strong);
+      font-size: clamp(1.7rem, 4vw, 2.8rem);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      color: var(--strong);
+      font-size: 1.08rem;
+      margin-bottom: 8px;
+    }
+
+    .section-note,
+    .card p,
+    .task li,
+    .task p,
+    .small-note,
+    .answer-list p {
+      color: var(--muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .card,
+    .task,
+    .code-card,
+    details {
+      padding: 18px;
+    }
+
+    .task {
+      border-left: 4px solid var(--yellow);
+    }
+
+    .task ol,
+    .task ul {
+      padding-left: 20px;
+    }
+
+    .task li { margin-top: 8px; }
+
+    code,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #dbeafe;
+      background: var(--code);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 16px;
+      line-height: 1.75;
+      font-size: 0.92rem;
+    }
+
+    .kw { color: #f472b6; }
+    .fn { color: #fbbf24; }
+    .str { color: #86efac; }
+    .num-code { color: #67e8f9; }
+    .cm { color: #64748b; }
+
+    .output {
+      margin-top: 12px;
+      border: 1px dashed rgba(251, 191, 36, 0.42);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--yellow);
+      background: rgba(251, 191, 36, 0.06);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.92rem;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .step-chip {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-weight: 800;
+      text-align: center;
+    }
+
+    details {
+      margin-top: 16px;
+      border-color: rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.07);
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--yellow);
+      font-weight: 900;
+      font-size: 1.05rem;
+    }
+
+    .answer-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .footer-cta {
+      margin-top: 42px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: var(--radius);
+      background: rgba(14, 165, 233, 0.08);
+      padding: 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+    }
+
+    @media (max-width: 860px) {
+      .page { width: min(100% - 24px, 1120px); padding-top: 56px; }
+      header,
+      .section-head,
+      .grid-2,
+      .footer-cta {
+        grid-template-columns: 1fr;
+      }
+      header { min-height: auto; }
+      .hero-panel { min-height: auto; }
+      .grid-3,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+      .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">返回課程首頁</a>
+
+  <main class="page">
+    <header>
+      <div class="hero-copy">
+        <div class="label">Python · OpenCV · MediaPipe Hands</div>
+        <h1>在自己的電腦寫出手勢識別程式</h1>
+        <p class="lead">
+          本頁不是網頁填答。請在自己的電腦建立 Python 專案，依序完成每個任務：開啟攝影機、安裝 MediaPipe、讀取 21 個手部關鍵點，最後用 Python 條件判斷手勢。
+        </p>
+        <div class="actions">
+          <a class="btn primary" href="#task-1">開始任務 1</a>
+          <a class="btn" href="lab.html">完成後看互動實驗室</a>
+        </div>
+      </div>
+
+      <div class="hero-panel" aria-label="MediaPipe 手部關鍵點示意">
+        <div class="panel-top">
+          <span>MediaPipe 輸出</span>
+          <span>21 landmarks</span>
+        </div>
+        <div class="hand-demo">
+          <svg viewBox="0 0 360 360" role="img" aria-label="MediaPipe Hands 0 到 20 共 21 個關鍵點">
+            <path class="bone" d="M178 304 L132 240 L104 166 L92 96 L84 40" />
+            <path class="bone" d="M178 304 L174 224 L168 142 L162 72 L158 18" />
+            <path class="bone" d="M178 304 L214 228 L240 148 L258 76 L272 22" />
+            <path class="bone" d="M178 304 L250 250 L298 204 L330 152 L346 104" />
+            <path class="bone" d="M178 304 L118 292 L70 268 L38 232 L20 194" />
+            <circle class="point key" cx="178" cy="304" r="15" /><text class="num" x="178" y="304">0</text>
+            <circle class="point" cx="118" cy="292" r="11" /><text class="num" x="118" y="292">1</text>
+            <circle class="point" cx="70" cy="268" r="11" /><text class="num" x="70" y="268">2</text>
+            <circle class="point" cx="38" cy="232" r="11" /><text class="num" x="38" y="232">3</text>
+            <circle class="point tip" cx="20" cy="194" r="15" /><text class="num" x="20" y="194">4</text>
+            <circle class="point key" cx="132" cy="240" r="13" /><text class="num" x="132" y="240">5</text>
+            <circle class="point" cx="104" cy="166" r="11" /><text class="num" x="104" y="166">6</text>
+            <circle class="point" cx="92" cy="96" r="11" /><text class="num" x="92" y="96">7</text>
+            <circle class="point tip" cx="84" cy="40" r="15" /><text class="num" x="84" y="40">8</text>
+            <circle class="point key" cx="174" cy="224" r="13" /><text class="num" x="174" y="224">9</text>
+            <circle class="point" cx="168" cy="142" r="11" /><text class="num" x="168" y="142">10</text>
+            <circle class="point" cx="162" cy="72" r="11" /><text class="num" x="162" y="72">11</text>
+            <circle class="point tip" cx="158" cy="18" r="15" /><text class="num" x="158" y="18">12</text>
+            <circle class="point key" cx="214" cy="228" r="13" /><text class="num" x="214" y="228">13</text>
+            <circle class="point" cx="240" cy="148" r="11" /><text class="num" x="240" y="148">14</text>
+            <circle class="point" cx="258" cy="76" r="11" /><text class="num" x="258" y="76">15</text>
+            <circle class="point tip" cx="272" cy="22" r="15" /><text class="num" x="272" y="22">16</text>
+            <circle class="point key" cx="250" cy="250" r="13" /><text class="num" x="250" y="250">17</text>
+            <circle class="point" cx="298" cy="204" r="11" /><text class="num" x="298" y="204">18</text>
+            <circle class="point" cx="330" cy="152" r="11" /><text class="num" x="330" y="152">19</text>
+            <circle class="point tip" cx="346" cy="104" r="15" /><text class="num" x="346" y="104">20</text>
+          </svg>
+        </div>
+        <div class="panel-bottom">
+          <span>Python 規則</span>
+          <span><code>lm[8].y &lt; lm[5].y</code></span>
+        </div>
+      </div>
+    </header>
+
+    <nav aria-label="任務章節">
+      <a href="#task-1">1 建專案</a>
+      <a href="#task-2">2 攝影機</a>
+      <a href="#task-3">3 MediaPipe</a>
+      <a href="#task-4">4 關鍵點</a>
+      <a href="#task-5">5 座標</a>
+      <a href="#task-6">6 手勢規則</a>
+      <a href="#task-7">7 最終程式</a>
+      <a href="#troubleshooting">常見問題</a>
+      <a href="#answers">參考答案</a>
+    </nav>
+
+    <section id="task-1">
+      <div class="section-head">
+        <h2>任務 1：建立 Python 專案</h2>
+        <p class="section-note">先確認電腦能執行 Python，並安裝本課會用到的 OpenCV 和 MediaPipe。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="code-card">
+          <pre><span class="cm"># 檢查 Python 是否已安裝</span>
+python --version
+
+mkdir gesture_python
+cd gesture_python
+
+<span class="cm"># 直接把本課需要的套件安裝到目前電腦的 Python</span>
+python -m pip install opencv-python mediapipe</pre>
+          <pre><span class="cm"># 如果安裝時提示 pip 太舊，可先更新 pip</span>
+python -m pip install --upgrade pip
+
+<span class="cm"># 然後再安裝套件</span>
+python -m pip install opencv-python mediapipe</pre>
+          <pre><span class="cm"># 檔名：01_test.py</span>
+<span class="kw">import</span> cv2
+<span class="kw">import</span> mediapipe <span class="kw">as</span> mp
+
+print(<span class="str">"OpenCV:"</span>, cv2.__version__)
+print(<span class="str">"MediaPipe 已成功載入"</span>)</pre>
+        </div>
+
+        <div class="task">
+          <h3>學生要完成的事</h3>
+          <ol>
+            <li>在自己的電腦建立 <code>gesture_python</code> 資料夾。</li>
+            <li>進入這個資料夾。</li>
+            <li>用 <code>python -m pip install opencv-python mediapipe</code> 直接安裝本課需要的套件。</li>
+            <li>建立並執行第一個檔案：<code>01_test.py</code>。</li>
+          </ol>
+          <div class="output">完成標準：終端機顯示 OpenCV 版本，並顯示 MediaPipe 已成功載入。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-2">
+      <div class="section-head">
+        <h2>任務 2：用 Python 開啟攝影機</h2>
+        <p class="section-note">Python 透過 OpenCV 讀取攝影機。第一次執行時，系統可能會要求允許 Python 或程式編輯器使用攝影機。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="code-card">
+          <pre><span class="cm"># 檔名：02_camera.py</span>
+<span class="kw">import</span> cv2
+
+cap = cv2.VideoCapture(<span class="num-code">0</span>)
+
+<span class="kw">while</span> True:
+    success, frame = cap.read()
+    <span class="kw">if</span> <span class="kw">not</span> success:
+        <span class="kw">break</span>
+
+    cv2.imshow(<span class="str">"Camera"</span>, frame)
+
+    <span class="kw">if</span> cv2.waitKey(<span class="num-code">1</span>) &amp; <span class="num-code">0xFF</span> == ord(<span class="str">"q"</span>):
+        <span class="kw">break</span>
+
+cap.release()
+cv2.destroyAllWindows()</pre>
+        </div>
+
+        <div class="task">
+          <h3>學生要完成的事</h3>
+          <ol>
+            <li>把程式存成 <code>02_camera.py</code>。</li>
+            <li>執行 <code>python 02_camera.py</code>。</li>
+            <li>看到攝影機視窗後，按 <code>q</code> 關閉。</li>
+            <li>如果畫面沒有出現，檢查攝影機權限或把 <code>VideoCapture(0)</code> 改成 <code>VideoCapture(1)</code>。</li>
+          </ol>
+          <div class="output">完成標準：電腦出現即時攝影機畫面，按 q 能關閉視窗。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-3">
+      <div class="section-head">
+        <h2>任務 3：加入 MediaPipe Hands</h2>
+        <p class="section-note">MediaPipe 負責把攝影機畫面分析成手部 landmarks；OpenCV 負責讀取和顯示影像。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="code-card">
+          <pre><span class="cm"># 檔名：03_mediapipe.py</span>
+<span class="kw">import</span> cv2
+<span class="kw">import</span> mediapipe <span class="kw">as</span> mp
+
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(
+    max_num_hands=<span class="num-code">1</span>,
+    min_detection_confidence=<span class="num-code">0.7</span>,
+    min_tracking_confidence=<span class="num-code">0.7</span>
+)
+
+print(<span class="str">"MediaPipe Hands 已建立"</span>)</pre>
+        </div>
+
+        <div class="task">
+          <h3>學生要完成的事</h3>
+          <ol>
+            <li>建立 <code>03_mediapipe.py</code>。</li>
+            <li>執行後確認終端機顯示 <code>MediaPipe Hands 已建立</code>。</li>
+            <li>找出程式中限制「最多偵測一隻手」的參數。</li>
+            <li>把信心門檻改成 <code>0.5</code> 試一次，再改回 <code>0.7</code>。</li>
+          </ol>
+          <div class="output">完成標準：程式沒有 import error，代表 MediaPipe 已正確安裝。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-4">
+      <div class="section-head">
+        <h2>任務 4：偵測並畫出 21 個關鍵點</h2>
+        <p class="section-note">MediaPipe 需要 RGB 圖片；OpenCV 讀進來的是 BGR，所以要先轉色彩格式。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="code-card">
+          <pre><span class="cm"># 檔名：04_landmarks.py</span>
+<span class="kw">import</span> cv2
+<span class="kw">import</span> mediapipe <span class="kw">as</span> mp
+
+mp_hands = mp.solutions.hands
+mp_draw = mp.solutions.drawing_utils
+hands = mp_hands.Hands(max_num_hands=<span class="num-code">1</span>)
+
+cap = cv2.VideoCapture(<span class="num-code">0</span>)
+
+<span class="kw">while</span> True:
+    success, frame = cap.read()
+    <span class="kw">if</span> <span class="kw">not</span> success:
+        <span class="kw">break</span>
+
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = hands.process(rgb)
+
+    <span class="kw">if</span> results.multi_hand_landmarks:
+        <span class="kw">for</span> hand_landmarks <span class="kw">in</span> results.multi_hand_landmarks:
+            mp_draw.draw_landmarks(
+                frame,
+                hand_landmarks,
+                mp_hands.HAND_CONNECTIONS
+            )
+
+    cv2.imshow(<span class="str">"Hand Landmarks"</span>, frame)
+    <span class="kw">if</span> cv2.waitKey(<span class="num-code">1</span>) &amp; <span class="num-code">0xFF</span> == ord(<span class="str">"q"</span>):
+        <span class="kw">break</span>
+
+cap.release()
+cv2.destroyAllWindows()</pre>
+        </div>
+
+        <div class="task">
+          <h3>學生要完成的事</h3>
+          <ol>
+            <li>建立 <code>04_landmarks.py</code>。</li>
+            <li>執行後把手放到攝影機前。</li>
+            <li>確認手上會出現點和線。</li>
+            <li>找出哪一行負責把 BGR 轉成 RGB。</li>
+          </ol>
+          <div class="output">完成標準：畫面中的手會出現 MediaPipe 骨架。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-5">
+      <div class="section-head">
+        <h2>任務 5：讀取食指尖座標</h2>
+        <p class="section-note">每個 landmark 都有 <code>x</code>、<code>y</code>、<code>z</code>。在畫面座標中，<code>y</code> 越小代表越靠上。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="code-card">
+          <pre><span class="cm"># 把這段加到 results.multi_hand_landmarks 裡面</span>
+lm = hand_landmarks.landmark
+
+index_tip = lm[<span class="num-code">8</span>]
+index_base = lm[<span class="num-code">5</span>]
+
+print(<span class="str">"食指尖 y:"</span>, index_tip.y)
+print(<span class="str">"食指根 y:"</span>, index_base.y)</pre>
+        </div>
+
+        <div class="task">
+          <h3>學生要完成的事</h3>
+          <ol>
+            <li>複製 <code>04_landmarks.py</code>，另存成 <code>05_coordinates.py</code>。</li>
+            <li>加入左邊這段程式。</li>
+            <li>伸直食指，觀察食指尖 y 和食指根 y 的大小。</li>
+            <li>彎曲食指，再觀察兩個 y 值如何改變。</li>
+          </ol>
+          <div class="output">完成標準：終端機會一直印出食指尖和食指根的 y 座標。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-6">
+      <div class="section-head">
+        <h2>任務 6：用 Python 判斷手勢</h2>
+        <p class="section-note">手勢識別不是先背答案，而是把觀察到的座標關係寫成條件。</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3>食指舉起</h3>
+          <p><code>lm[8].y &lt; lm[5].y</code></p>
+        </div>
+        <div class="card">
+          <h3>中指舉起</h3>
+          <p><code>lm[12].y &lt; lm[9].y</code></p>
+        </div>
+        <div class="card">
+          <h3>剪刀手</h3>
+          <p>食指和中指都舉起。</p>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:16px">
+        <div class="code-card">
+          <pre><span class="cm"># 檔名：06_gesture.py 中需要你補完的部分</span>
+index_up = lm[____].y &lt; lm[____].y
+middle_up = lm[____].y &lt; lm[____].y
+
+<span class="kw">if</span> ____________________:
+    gesture = <span class="str">"Peace"</span>
+<span class="kw">elif</span> ____________________:
+    gesture = <span class="str">"Index Up"</span>
+<span class="kw">else</span>:
+    gesture = <span class="str">"Unknown"</span>
+
+cv2.putText(frame, gesture, (<span class="num-code">30</span>, <span class="num-code">60</span>),
+            cv2.FONT_HERSHEY_SIMPLEX, <span class="num-code">1.4</span>,
+            (<span class="num-code">0</span>, <span class="num-code">255</span>, <span class="num-code">0</span>), <span class="num-code">3</span>)</pre>
+        </div>
+
+        <div class="task">
+          <h3>學生要完成的事</h3>
+          <ol>
+            <li>複製 <code>05_coordinates.py</code>，另存成 <code>06_gesture.py</code>。</li>
+            <li>根據任務 5 觀察到的座標，補完左邊的空格。</li>
+            <li>做出食指舉起，確認畫面顯示 <code>Index Up</code>。</li>
+            <li>做出剪刀手，確認畫面顯示 <code>Peace</code>。</li>
+          </ol>
+          <div class="output">完成標準：畫面左上方會根據手勢顯示不同文字。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-7">
+      <div class="section-head">
+        <h2>任務 7：完成最終程式</h2>
+        <p class="section-note">最後把攝影機、MediaPipe、畫骨架、讀座標、判斷手勢整合成一個檔案。</p>
+      </div>
+
+      <div class="code-card">
+        <pre><span class="cm"># 檔名：final_gesture.py</span>
+<span class="kw">import</span> cv2
+<span class="kw">import</span> mediapipe <span class="kw">as</span> mp
+
+mp_hands = mp.solutions.hands
+mp_draw = mp.solutions.drawing_utils
+
+hands = mp_hands.Hands(
+    max_num_hands=<span class="num-code">1</span>,
+    min_detection_confidence=<span class="num-code">0.7</span>,
+    min_tracking_confidence=<span class="num-code">0.7</span>
+)
+
+cap = cv2.VideoCapture(<span class="num-code">0</span>)
+
+<span class="kw">while</span> True:
+    success, frame = cap.read()
+    <span class="kw">if</span> <span class="kw">not</span> success:
+        <span class="kw">break</span>
+
+    frame = cv2.flip(frame, <span class="num-code">1</span>)
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = hands.process(rgb)
+
+    gesture = <span class="str">"No hand"</span>
+
+    <span class="cm"># TODO 1：判斷是否偵測到手</span>
+    <span class="cm"># TODO 2：取出第一隻手的 landmarks</span>
+    <span class="cm"># TODO 3：寫出食指與中指是否舉起的條件</span>
+    <span class="cm"># TODO 4：用 if / elif / else 決定 gesture</span>
+    <span class="cm"># TODO 5：畫出手部骨架</span>
+
+    cv2.putText(frame, gesture, (<span class="num-code">30</span>, <span class="num-code">60</span>),
+                cv2.FONT_HERSHEY_SIMPLEX, <span class="num-code">1.4</span>,
+                (<span class="num-code">0</span>, <span class="num-code">255</span>, <span class="num-code">0</span>), <span class="num-code">3</span>)
+
+    cv2.imshow(<span class="str">"Python Gesture Recognition"</span>, frame)
+
+    <span class="kw">if</span> cv2.waitKey(<span class="num-code">1</span>) &amp; <span class="num-code">0xFF</span> == ord(<span class="str">"q"</span>):
+        <span class="kw">break</span>
+
+cap.release()
+cv2.destroyAllWindows()</pre>
+      </div>
+
+      <div class="task" style="margin-top:16px">
+        <h3>學生要完成的事</h3>
+        <ol>
+          <li>建立 <code>final_gesture.py</code>。</li>
+          <li>把任務 4、任務 5、任務 6 已完成的程式片段放進 TODO 位置。</li>
+          <li>執行 <code>python final_gesture.py</code>。</li>
+          <li>測試三種情況：沒有手、食指舉起、剪刀手。</li>
+          <li>自行新增一個手勢，例如握拳、張開手掌或只有中指舉起。</li>
+        </ol>
+        <div class="output">完成標準：學生能在自己電腦上執行 Python 程式，並用攝影機看到手勢結果。</div>
+      </div>
+    </section>
+
+    <section id="troubleshooting">
+        <div class="section-head">
+          <h2>常見問題與解法</h2>
+          <p class="section-note">遇到錯誤時，先對照錯誤訊息，再按下面方法處理。不要一次改很多地方，每次只改一件事再重新執行。</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="task">
+            <h3>問題 1：輸入 <code>python</code> 後沒有反應或顯示找不到</h3>
+            <ol>
+              <li>先試：<code>py --version</code></li>
+              <li>如果 <code>py</code> 可以用，後面的指令可改成 <code>py 檔名.py</code>。</li>
+              <li>如果兩個都不行，表示電腦未正確安裝 Python，重新安裝 Python，安裝時勾選 Add Python to PATH。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 2：<code>pip</code> 找不到或安裝到錯的地方</h3>
+            <ol>
+              <li>不要單獨輸入 <code>pip install ...</code>。</li>
+              <li>使用：<code>python -m pip install opencv-python mediapipe</code></li>
+              <li>如果用的是 <code>py</code>，則輸入：<code>py -m pip install opencv-python mediapipe</code></li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 3：安裝時顯示 pip 版本太舊</h3>
+            <ol>
+              <li>先更新 pip：<code>python -m pip install --upgrade pip</code></li>
+              <li>再重新安裝：<code>python -m pip install opencv-python mediapipe</code></li>
+              <li>如果學校網絡很慢，等待一段時間，不要重複快速按 Enter。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 4：<code>ModuleNotFoundError: No module named 'cv2'</code></h3>
+            <ol>
+              <li>代表 OpenCV 沒有安裝到目前正在執行的 Python。</li>
+              <li>執行：<code>python -m pip install opencv-python</code></li>
+              <li>再執行：<code>python 01_test.py</code></li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 5：<code>ModuleNotFoundError: No module named 'mediapipe'</code></h3>
+            <ol>
+              <li>代表 MediaPipe 沒有安裝到目前正在執行的 Python。</li>
+              <li>執行：<code>python -m pip install mediapipe</code></li>
+              <li>如果安裝失敗，檢查 Python 版本，建議使用較新的 64-bit Python。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 6：攝影機視窗沒有出現</h3>
+            <ol>
+              <li>確認沒有其他程式正在使用攝影機。</li>
+              <li>檢查系統是否允許 Python 或程式編輯器使用攝影機。</li>
+              <li>把 <code>cv2.VideoCapture(0)</code> 改成 <code>cv2.VideoCapture(1)</code> 再試。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 7：攝影機視窗出現但畫面是黑的</h3>
+            <ol>
+              <li>等 3 到 5 秒，部分攝影機啟動較慢。</li>
+              <li>確認鏡頭沒有被遮住。</li>
+              <li>改用 <code>VideoCapture(1)</code> 或重新插拔外接攝影機。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 8：按 <code>q</code> 無法關閉視窗</h3>
+            <ol>
+              <li>先點一下攝影機畫面視窗，讓鍵盤焦點在視窗上。</li>
+              <li>再按 <code>q</code>。</li>
+              <li>如果仍不能關閉，到終端機按 <code>Ctrl + C</code> 停止程式。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 9：手放進畫面但沒有骨架</h3>
+            <ol>
+              <li>讓手完整出現在畫面中，不要太近。</li>
+              <li>增加光線，避免背景太亂。</li>
+              <li>把 <code>min_detection_confidence</code> 從 <code>0.7</code> 改成 <code>0.5</code> 試一次。</li>
+            </ol>
+          </div>
+
+          <div class="task">
+            <h3>問題 10：程式縮排錯誤</h3>
+            <ol>
+              <li>Python 很重視縮排，<code>while</code>、<code>if</code>、<code>for</code> 下一行要往右縮排。</li>
+              <li>同一層縮排要一致。</li>
+              <li>建議用 4 個空格，不要混用 Tab 和空格。</li>
+            </ol>
+          </div>
+        </div>
+    </section>
+
+    <section id="answers">
+      <div class="section-head">
+        <h2>老師公佈參考答案</h2>
+        <p class="section-note">學生完成本機 Python 任務後再打開。這裡提供檢查重點，不需要學生在網頁填答案。</p>
+      </div>
+
+      <details>
+        <summary>打開參考重點</summary>
+        <div class="answer-list">
+          <div>
+            <h3>環境檢查</h3>
+            <p>能執行 <code>python --version</code>，能成功 <code>import cv2</code> 和 <code>import mediapipe</code>，代表環境基本完成。</p>
+          </div>
+          <div>
+            <h3>攝影機權限</h3>
+            <p>OpenCV 用 <code>cv2.VideoCapture(0)</code> 開啟預設攝影機。如果不能開啟，檢查系統攝影機權限，或嘗試把 <code>0</code> 改成 <code>1</code>。</p>
+          </div>
+          <div>
+            <h3>MediaPipe 關鍵點</h3>
+            <p>檢查學生是否先判斷 MediaPipe 有偵測到手，再取出其中一隻手的 landmarks。不要在沒有手的情況下直接讀取資料。</p>
+          </div>
+          <div>
+            <h3>食指規則</h3>
+            <p>檢查學生是否用了「食指尖」和「食指根」兩個點，並且能說明為什麼畫面中 y 值較小代表位置較高。</p>
+          </div>
+          <div>
+            <h3>剪刀手規則</h3>
+            <p>檢查學生是否同時判斷食指和中指，並能說明為什麼需要用 <code>and</code>。進階學生可再加入無名指和小指放下的條件。</p>
+          </div>
+        </div>
+      </details>
+
+      <div class="footer-cta">
+        <div>
+          <h2 style="font-size:clamp(1.4rem,3vw,2rem)">完成 Python 後再看互動實驗室</h2>
+          <p class="section-note">互動實驗室可以用來比較網頁互動版本和 Python 本機版本的差異。</p>
+        </div>
+        <a class="btn primary" href="lab.html">前往互動實驗室</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

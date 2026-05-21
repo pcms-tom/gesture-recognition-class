@@ -1,0 +1,2053 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 手勢識別挑戰 · 10 分鐘探究課</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    * { margin: 0; }
+
+    :root {
+      --bg: #060b14;
+      --surface: #111c31;
+      --surface-2: #1b2a44;
+      --ink: #ffffff;
+      --muted: #d2def0;
+      --line: rgba(255, 255, 255, 0.24);
+      --cyan: #38bdf8;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #fb7185;
+      --violet: #a78bfa;
+      --orange: #fb923c;
+      --blue: #60a5fa;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      font-size: 17px;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px),
+        radial-gradient(circle at 14% 8%, rgba(56, 189, 248, 0.11), transparent 26rem),
+        radial-gradient(circle at 85% 16%, rgba(167, 139, 250, 0.08), transparent 24rem),
+        radial-gradient(circle at 18% 62%, rgba(52, 211, 153, 0.08), transparent 24rem),
+        radial-gradient(circle at 82% 78%, rgba(251, 146, 60, 0.1), transparent 24rem),
+        linear-gradient(145deg, rgba(6, 11, 20, 0), rgba(31, 18, 52, 0.35) 44%, rgba(7, 34, 44, 0.28)),
+        var(--bg);
+      background-size: 38px 38px, 38px 38px, auto, auto, auto, auto, auto, auto;
+      line-height: 1.7;
+    }
+
+    a { color: inherit; }
+
+    .back {
+      position: absolute;
+      left: 18px;
+      top: 16px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 16px;
+    }
+
+    .page {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 72px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 410px);
+      gap: 28px;
+      align-items: center;
+      min-height: 520px;
+      padding-bottom: 32px;
+    }
+
+    .label {
+      width: fit-content;
+      padding: 6px 13px;
+      border: 1px solid rgba(56, 189, 248, 0.38);
+      border-radius: 999px;
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.08);
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    h1 {
+      position: relative;
+      max-width: 760px;
+      margin-top: 18px;
+      font-size: clamp(2.75rem, 7vw, 5.8rem);
+      line-height: 1.1;
+      letter-spacing: 0;
+      color: transparent;
+      background: linear-gradient(100deg, #ffffff 0%, #38bdf8 24%, #a78bfa 48%, #f472b6 68%, #fbbf24 88%, #ffffff 100%);
+      background-size: 220% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      text-shadow:
+        0 0 18px rgba(56, 189, 248, 0.35),
+        0 0 36px rgba(167, 139, 250, 0.26),
+        0 0 56px rgba(244, 114, 182, 0.18);
+      animation: titleShift 5s ease-in-out infinite;
+    }
+
+    h1::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: -12px;
+      width: min(420px, 72%);
+      height: 5px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #38bdf8, #a78bfa, #f472b6, #fbbf24);
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.45);
+      animation: titleBar 2.8s ease-in-out infinite;
+    }
+
+    @keyframes titleShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    @keyframes titleBar {
+      0%, 100% { transform: scaleX(0.72); transform-origin: left; opacity: 0.78; }
+      50% { transform: scaleX(1); transform-origin: left; opacity: 1; }
+    }
+
+    .lead {
+      max-width: 690px;
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: clamp(1.2rem, 2.2vw, 1.2rem);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 800;
+    }
+
+    .btn.primary {
+      border-color: transparent;
+      background: var(--cyan);
+      color: #06111f;
+    }
+
+    .hero-card,
+    .phase,
+    .prompt,
+    .rubric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #111c31;
+    }
+
+    .hero-card {
+      overflow: hidden;
+      min-height: 420px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .card-top,
+    .card-bottom {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
+      font-size: 15px;
+    }
+
+    .card-bottom {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+    }
+
+    .hand-stage {
+      display: grid;
+      place-items: center;
+      min-height: 310px;
+      background:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px),
+        #07101d;
+      background-size: 32px 32px;
+    }
+
+    .hand-stage svg {
+      width: min(86%, 320px);
+      height: auto;
+    }
+
+    .bone { stroke: #60a5fa; stroke-width: 9; stroke-linecap: round; fill: none; }
+    .joint { fill: #0f172a; stroke: var(--yellow); stroke-width: 3; }
+    .joint.tip { fill: rgba(52, 211, 153, 0.18); stroke: var(--green); }
+    .joint.base { stroke: var(--cyan); }
+    .num {
+      fill: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 14px;
+      font-weight: 800;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 12px 0;
+      border-block: 1px solid var(--line);
+      background: rgba(8, 17, 31, 0.9);
+      backdrop-filter: blur(10px);
+    }
+
+    nav a {
+      flex: 0 0 auto;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    section {
+      position: relative;
+      margin-top: 34px;
+      padding-top: 34px;
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    section::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 0;
+      width: min(220px, 52%);
+      height: 3px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--cyan), var(--yellow));
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 0.42fr);
+      gap: 20px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      font-size: clamp(1.7rem, 4vw, 2.8rem);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .section-note { color: var(--muted); font-size: 1.1rem; }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+
+    .phase {
+      min-height: 230px;
+      padding: 16px;
+    }
+
+    .phase .time {
+      color: var(--cyan);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .phase h3 {
+      margin-top: 10px;
+      font-size: 1.17rem;
+      line-height: 1.35;
+    }
+
+    .phase p,
+    .phase li {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 1.17rem;
+    }
+
+    .phase ul {
+      margin-top: 8px;
+      padding-left: 18px;
+    }
+
+    .tag {
+      display: inline-flex;
+      margin-top: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(251, 191, 36, 0.12);
+      color: var(--yellow);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.56fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .prompt,
+    .rubric {
+      padding: 18px;
+    }
+
+    .prompt h3,
+    .rubric h3 {
+      font-size: 1.28rem;
+      line-height: 1.35;
+    }
+
+    .prompt p,
+    .rubric p,
+    .rubric li {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .prompt code {
+      display: block;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #020817;
+      color: #dbeafe;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.12rem;
+      line-height: 1.6;
+    }
+
+    .rubric ul { padding-left: 18px; }
+
+    .lab-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.6fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .lab-steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .lab-step {
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #16243b;
+    }
+
+    .lab-step strong {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: rgba(56, 189, 248, 0.14);
+      color: var(--cyan);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .lab-step p {
+      margin-top: 0;
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .mini-check {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .exit-ticket {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .ticket {
+      min-height: 110px;
+      padding: 14px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #16243b;
+    }
+
+    .ticket strong { color: var(--green); }
+    .ticket p { margin-top: 6px; color: var(--muted); font-size: 1.16rem; }
+
+    .lesson-block {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(var(--accent-rgb, 56, 189, 248), 0.11), rgba(17, 28, 49, 0.97) 36%),
+        #111c31;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #background { --accent: var(--blue); --accent-rgb: 96, 165, 250; }
+    #engage { --accent: var(--yellow); --accent-rgb: 251, 191, 36; }
+    #lab { --accent: var(--green); --accent-rgb: 52, 211, 153; }
+    #explain { --accent: var(--violet); --accent-rgb: 167, 139, 250; }
+    #apply { --accent: var(--orange); --accent-rgb: 251, 146, 60; }
+    #answer { --accent: var(--cyan); --accent-rgb: 56, 189, 248; }
+
+    .lesson-block + .lesson-block { margin-top: 14px; }
+
+    .lesson-meta {
+      display: inline-flex;
+      width: fit-content;
+      padding: 4px 9px;
+      border: 1px solid rgba(var(--accent-rgb, 56, 189, 248), 0.36);
+      border-radius: 999px;
+      background: rgba(var(--accent-rgb, 56, 189, 248), 0.12);
+      color: var(--accent, var(--cyan));
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 15px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .step-head {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 16px;
+      align-items: center;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, rgba(var(--accent-rgb, 56, 189, 248), 0.3), rgba(255,255,255,0.055)),
+        rgba(255,255,255,0.025);
+    }
+
+    .step-number {
+      width: 74px;
+      height: 74px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(var(--accent-rgb, 56, 189, 248), 0.5);
+      background: rgba(var(--accent-rgb, 56, 189, 248), 0.18);
+      color: var(--accent, var(--cyan));
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.9rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .step-copy h3 {
+      color: #ffffff;
+      font-size: clamp(1.85rem, 4vw, 2.65rem);
+      line-height: 1.28;
+    }
+
+    .step-copy p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 1.17rem;
+    }
+
+    .step-body {
+      padding: 20px;
+    }
+
+    .lesson-block h3 {
+      color: #ffffff;
+      font-size: 1.9rem;
+      line-height: 1.35;
+    }
+
+    .lesson-block p,
+    .lesson-block li {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 1.16rem;
+    }
+
+    .lesson-block ol,
+    .lesson-block ul {
+      margin-top: 10px;
+      padding-left: 22px;
+    }
+
+    .big-question {
+      position: relative;
+      margin-top: 24px;
+      padding: 20px 22px;
+      border: 2px solid var(--yellow);
+      border-radius: 8px;
+      background:
+        repeating-linear-gradient(90deg, rgba(251,191,36,0.14) 0 2px, transparent 2px 14px),
+        #1b1b10;
+      color: #fff8d8;
+      font-size: clamp(1.8rem, 4vw, 2.75rem);
+      font-weight: 900;
+      line-height: 1.35;
+      overflow: hidden;
+    }
+
+    .big-question::before {
+      content: "核心問題";
+      display: block;
+      width: fit-content;
+      margin-bottom: 8px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: var(--yellow);
+      color: #171100;
+      font-size: 1.1rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      animation: questionTag 1.1s steps(2, end) infinite;
+    }
+
+    .big-question::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+      transform: translateX(-120%);
+      animation: questionScan 2.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes questionScan {
+      0%, 28% { transform: translateX(-120%); }
+      62%, 100% { transform: translateX(120%); }
+    }
+
+    @keyframes questionTag {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.64; }
+    }
+
+    .answer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+      border: 1px solid rgba(255,255,255,0.32);
+      border-radius: 8px;
+      background: #132036;
+      padding: 12px;
+    }
+
+    .field label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 1.12rem;
+      font-weight: 900;
+    }
+
+    .field label::before {
+      content: "填";
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: rgba(251, 191, 36, 0.13);
+      color: var(--yellow);
+      font-size: 1.16rem;
+      font-weight: 900;
+    }
+
+    textarea,
+    input {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      border: 1px solid rgba(255,255,255,0.34);
+      border-radius: 8px;
+      background: #020817;
+      color: var(--ink);
+      padding: 12px;
+      font: inherit;
+      font-size: 1.12rem;
+      line-height: 1.55;
+      outline: none;
+    }
+
+    input { min-height: 44px; resize: none; }
+    textarea:focus,
+    input:focus { border-color: var(--cyan); }
+
+    .camera-widget {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 20;
+      width: min(520px, calc(100vw - 32px));
+    }
+
+    .camera-widget summary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: fit-content;
+      margin-left: auto;
+      min-height: 42px;
+      padding: 9px 14px;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 999px;
+      background: rgba(8, 17, 31, 0.94);
+      color: var(--ink);
+      box-shadow: 0 12px 34px rgba(0,0,0,0.32);
+      cursor: pointer;
+      font-size: 1.16rem;
+      font-weight: 900;
+      backdrop-filter: blur(10px);
+    }
+
+    .camera-widget summary::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(52, 211, 153, 0.8);
+    }
+
+    .camera-panel {
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(8, 17, 31, 0.96);
+      box-shadow: 0 24px 70px rgba(0,0,0,0.48);
+      overflow: hidden;
+      backdrop-filter: blur(14px);
+    }
+
+    .camera-panel .panel-note {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .demo-camera {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(190px, 0.72fr);
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .demo-view {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #020617;
+    }
+
+    #demo-video {
+      display: none;
+    }
+
+    #demo-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .demo-side {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .demo-status,
+    .demo-result {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #16243b;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 1.16rem;
+    }
+
+    .demo-result strong {
+      display: block;
+      color: var(--green);
+      font-size: 1.22rem;
+      line-height: 1.35;
+    }
+
+    .demo-data {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(5, 9, 20, 0.72);
+    }
+
+    .demo-data table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.16rem;
+    }
+
+    .demo-data th,
+    .demo-data td {
+      padding: 5px 7px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .demo-data th:first-child,
+    .demo-data td:first-child {
+      text-align: left;
+      color: var(--yellow);
+    }
+
+    .demo-data th {
+      position: sticky;
+      top: 0;
+      background: #08111f;
+      color: var(--muted);
+      z-index: 1;
+    }
+
+    .concept-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .concept-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #16243b;
+      padding: 14px;
+    }
+
+    .concept-card strong {
+      display: block;
+      color: var(--green);
+      margin-bottom: 4px;
+    }
+
+    .concept-stack {
+      display: grid;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .concept-panel {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(167, 139, 250, 0.18), rgba(22, 36, 59, 0.94) 45%),
+        #16243b;
+      padding: 16px;
+    }
+
+    .concept-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(167, 139, 250, 0.45);
+      background: rgba(167, 139, 250, 0.16);
+      color: var(--violet);
+    }
+
+    .concept-icon svg {
+      width: 36px;
+      height: 36px;
+    }
+
+    .concept-panel h4 {
+      color: var(--ink);
+      font-size: 1.6rem;
+      line-height: 1.35;
+    }
+
+    .concept-panel p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 1.14rem;
+    }
+
+    .concept-example {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--yellow);
+      border-radius: 8px;
+      background: rgba(251, 191, 36, 0.08);
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .concept-focus {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .ai-box {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid rgba(251, 146, 60, 0.46);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(251, 146, 60, 0.16), rgba(167, 139, 250, 0.09)),
+        #16243b;
+    }
+
+    .ai-box code {
+      display: block;
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #020817;
+      color: #dbeafe;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      line-height: 1.65;
+      font-size: 1.16rem;
+    }
+
+    .final-lab-entry {
+      margin-top: 16px;
+      padding: 18px;
+      border: 1px solid rgba(56, 189, 248, 0.34);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(52, 211, 153, 0.11)),
+        #16243b;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .final-lab-entry p {
+      margin-top: 4px;
+      color: var(--muted);
+    }
+
+    .conclusion-steps {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .conclusion-card {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(56, 189, 248, 0.13), rgba(22, 36, 59, 0.96) 45%),
+        #16243b;
+      padding: 14px;
+    }
+
+    .step-num {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: rgba(56, 189, 248, 0.13);
+      color: var(--cyan);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.38rem;
+      font-weight: 900;
+    }
+
+    .example {
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      border-radius: 8px;
+      background: rgba(251, 191, 36, 0.08);
+      color: var(--muted);
+      font-size: 1.17rem;
+    }
+
+    .mission-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .mission-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(160deg, rgba(var(--accent-rgb, 56, 189, 248), 0.16), rgba(22, 36, 59, 0.96) 46%),
+        #16243b;
+      padding: 14px;
+      min-height: 150px;
+    }
+
+    .mission-card svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      color: var(--accent, var(--cyan));
+    }
+
+    .mission-card strong {
+      display: block;
+      color: #ffffff;
+      font-size: 1.38rem;
+      line-height: 1.28;
+    }
+
+    .mission-card p {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .hint-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .hint {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(251, 191, 36, 0.1), rgba(22, 36, 59, 0.96)),
+        #16243b;
+      padding: 12px;
+    }
+
+    .hint b {
+      display: block;
+      color: var(--yellow);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 1.1rem;
+    }
+
+    .hint span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 1.1rem;
+      line-height: 1.55;
+    }
+
+    .mini-diagram {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: minmax(260px, 0.5fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .diagram-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(5, 9, 20, 0.84);
+      padding: 14px;
+    }
+
+    .diagram-card svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .evidence-table {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .evidence-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .evidence-row > span {
+      color: var(--muted);
+      font-weight: 800;
+      font-size: 1.16rem;
+    }
+
+    .evidence-row input {
+      min-height: 42px;
+    }
+
+    .rule-box {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid rgba(52, 211, 153, 0.38);
+      border-radius: 8px;
+      background: rgba(52, 211, 153, 0.08);
+    }
+
+    .rule-box code {
+      display: block;
+      margin-top: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #020817;
+      color: #dbeafe;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      line-height: 1.65;
+    }
+
+    .background-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.82fr) minmax(280px, 0.5fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .scenario-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .scenario {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #16243b;
+      padding: 12px;
+    }
+
+    .scenario svg {
+      width: 42px;
+      height: 42px;
+      color: var(--cyan);
+    }
+
+    .scenario strong {
+      display: block;
+      color: var(--ink);
+      line-height: 1.35;
+    }
+
+    .scenario span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 1.16rem;
+    }
+
+    .task-board {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .observe-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.58fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      margin-top: 14px;
+    }
+
+    .observe-hand {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px),
+        #07101d;
+      background-size: 28px 28px;
+      padding: 14px;
+    }
+
+    .observe-hand svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .legend span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .legend i {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      display: inline-block;
+      border: 2px solid currentColor;
+      background: rgba(255,255,255,0.06);
+    }
+
+    .legend .tip-color { color: var(--green); }
+    .legend .base-color { color: var(--cyan); }
+    .legend .joint-color { color: var(--yellow); }
+
+    .task-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #16243b;
+      padding: 14px;
+      border-left: 4px solid var(--yellow);
+    }
+
+    .task-card h4 {
+      font-size: 1.12rem;
+      line-height: 1.35;
+    }
+
+    .hint-answer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .tip-box,
+    .answer-box {
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 92px;
+    }
+
+    .tip-box {
+      border: 1px solid rgba(56, 189, 248, 0.32);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .answer-box {
+      border: 1px solid rgba(52, 211, 153, 0.32);
+      background: rgba(52, 211, 153, 0.08);
+    }
+
+    .tip-box b,
+    .answer-box b {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 1.16rem;
+    }
+
+    .tip-box b { color: var(--cyan); }
+    .answer-box b { color: var(--green); }
+
+    .tip-box p,
+    .answer-box p {
+      margin-top: 0;
+      color: var(--muted);
+      font-size: 1.17rem;
+    }
+
+    details.tip-box,
+    details.answer-box {
+      cursor: pointer;
+    }
+
+    details.tip-box summary,
+    details.answer-box summary {
+      list-style: none;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+
+    details.tip-box summary::-webkit-details-marker,
+    details.answer-box summary::-webkit-details-marker { display: none; }
+
+    details.tip-box summary::after,
+    details.answer-box summary::after {
+      content: "點擊展開";
+      float: right;
+      color: var(--muted);
+      font-size: 1.16rem;
+      font-weight: 800;
+    }
+
+    details.tip-box[open] summary::after,
+    details.answer-box[open] summary::after { content: "收起"; }
+
+    details.tip-box summary { color: var(--cyan); }
+    details.answer-box summary { color: var(--green); }
+
+    footer {
+      padding: 34px 0 0;
+      color: var(--muted);
+      text-align: center;
+      font-size: 15px;
+    }
+
+    @media (max-width: 980px) {
+      header,
+      .section-head,
+      .two-col,
+      .lab-panel,
+      .background-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .timeline {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page { width: min(100% - 28px, 1080px); padding-top: 60px; }
+      header { min-height: auto; }
+      .actions { flex-direction: column; }
+      .btn { width: 100%; }
+      .timeline,
+      .exit-ticket,
+      .answer-grid,
+      .concept-row,
+      .concept-focus,
+      .concept-panel,
+      .mission-grid,
+      .hint-strip,
+      .mini-diagram,
+      .evidence-row,
+      .hint-answer,
+      .observe-layout,
+      .final-lab-entry,
+      .conclusion-card {
+        grid-template-columns: 1fr;
+      }
+
+      .camera-widget {
+        top: 10px;
+        right: 10px;
+        width: min(420px, calc(100vw - 20px));
+      }
+
+      .demo-camera {
+        grid-template-columns: 1fr;
+      }
+
+      .demo-side {
+        grid-template-rows: auto auto 240px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="back">返回首頁</a>
+  <details class="camera-widget">
+    <summary>手勢識別鏡頭</summary>
+    <div class="camera-panel">
+      <div class="panel-note">
+        <span>即時鏡頭、骨架與 landmark 資料</span>
+        <a href="lab.html" target="_blank" rel="noopener">完整實驗室</a>
+      </div>
+      <div class="demo-camera">
+        <div class="demo-view">
+          <video id="demo-video" playsinline></video>
+          <canvas id="demo-canvas" width="640" height="480"></canvas>
+        </div>
+        <div class="demo-side">
+          <div id="demo-status" class="demo-status">點擊後準備開啟攝影機...</div>
+          <div class="demo-result">
+            <span>目前判斷</span>
+            <strong id="demo-gesture">尚未偵測</strong>
+            <span id="demo-rule">等待手部進入畫面</span>
+          </div>
+          <div class="demo-data" aria-label="全部 landmark 即時資料">
+            <table>
+              <thead>
+                <tr><th>點</th><th>x</th><th>y</th><th>z</th></tr>
+              </thead>
+              <tbody id="demo-landmarks"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <main class="page">
+    <header>
+      <div>
+        <div class="label">10 分鐘任務</div>
+        <h1>AI 真的看懂你的手勢了嗎？</h1>
+        <p class="lead">
+          很多裝置都能「看懂」手勢：不用鍵盤、不用滑鼠，只要揮手、比一個手勢，系統就能做出反應。這節課要用一個小實驗拆開它背後的判斷邏輯。
+        </p>
+        <div class="big-question">AI 是如何「看懂」你的手勢？</div>
+      </div>
+
+      <div class="hero-card" aria-label="手勢識別探究示意">
+        <div class="card-top">
+          <span>Observation</span>
+          <span>Why did it misread?</span>
+        </div>
+        <div class="hand-stage">
+          <svg viewBox="0 0 360 360" role="img" aria-label="手部關鍵點比較示意圖">
+            <path class="bone" d="M178 304 L118 292 L70 268 L38 232 L20 194" />
+            <path class="bone" d="M178 304 L132 240 L104 166 L92 96 L84 40" />
+            <path class="bone" d="M178 304 L174 224 L168 142 L162 72 L158 18" />
+            <path class="bone" d="M178 304 L214 228 L240 148 L258 76 L272 22" />
+            <path class="bone" d="M178 304 L250 250 L298 204 L330 152 L346 104" />
+
+            <circle class="joint base" cx="178" cy="304" r="13" /><text class="num" x="178" y="304">0</text>
+
+            <circle class="joint" cx="118" cy="292" r="10" /><text class="num" x="118" y="292">1</text>
+            <circle class="joint" cx="70" cy="268" r="10" /><text class="num" x="70" y="268">2</text>
+            <circle class="joint" cx="38" cy="232" r="10" /><text class="num" x="38" y="232">3</text>
+            <circle class="joint tip" cx="20" cy="194" r="13" /><text class="num" x="20" y="194">4</text>
+
+            <circle class="joint base" cx="132" cy="240" r="12" /><text class="num" x="132" y="240">5</text>
+            <circle class="joint" cx="104" cy="166" r="10" /><text class="num" x="104" y="166">6</text>
+            <circle class="joint" cx="92" cy="96" r="10" /><text class="num" x="92" y="96">7</text>
+            <circle class="joint tip" cx="84" cy="40" r="13" /><text class="num" x="84" y="40">8</text>
+
+            <circle class="joint base" cx="174" cy="224" r="12" /><text class="num" x="174" y="224">9</text>
+            <circle class="joint" cx="168" cy="142" r="10" /><text class="num" x="168" y="142">10</text>
+            <circle class="joint" cx="162" cy="72" r="10" /><text class="num" x="162" y="72">11</text>
+            <circle class="joint tip" cx="158" cy="18" r="13" /><text class="num" x="158" y="18">12</text>
+
+            <circle class="joint base" cx="214" cy="228" r="12" /><text class="num" x="214" y="228">13</text>
+            <circle class="joint" cx="240" cy="148" r="10" /><text class="num" x="240" y="148">14</text>
+            <circle class="joint" cx="258" cy="76" r="10" /><text class="num" x="258" y="76">15</text>
+            <circle class="joint tip" cx="272" cy="22" r="13" /><text class="num" x="272" y="22">16</text>
+
+            <circle class="joint base" cx="250" cy="250" r="12" /><text class="num" x="250" y="250">17</text>
+            <circle class="joint" cx="298" cy="204" r="10" /><text class="num" x="298" y="204">18</text>
+            <circle class="joint" cx="330" cy="152" r="10" /><text class="num" x="330" y="152">19</text>
+            <circle class="joint tip" cx="346" cy="104" r="13" /><text class="num" x="346" y="104">20</text>
+          </svg>
+        </div>
+        <div class="card-bottom">
+          <span>先猜：怎麼判斷「手指有沒有舉起」？</span>
+        </div>
+      </div>
+    </header>
+
+    <nav aria-label="課程流程">
+      <a href="#background">01 背景</a>
+      <a href="#engage">02 觀察</a>
+      <a href="#lab">03 實驗</a>
+      <a href="#explain">04 解釋</a>
+      <a href="#apply">05 挑戰</a>
+      <a href="#answer">06 學習結論</a>
+    </nav>
+
+    <section id="background">
+      <div class="lesson-block">
+        <div class="step-head">
+          <div class="step-number">01</div>
+          <div class="step-copy">
+            <div class="lesson-meta">課程背景</div>
+            <h3>手勢識別平時用在哪裡？</h3>
+            <p>先理解它和 AI 的關係，再進入觀察任務。</p>
+          </div>
+        </div>
+        <div class="step-body">
+          <p>手勢識別是一種讓電腦用鏡頭理解人體動作的方法。它常用在不方便接觸螢幕、需要快速控制、或想讓互動更自然的場景中。</p>
+          <p>它和 AI 有關，是因為鏡頭本身只會拍到像素，並不知道哪裡是手腕、哪裡是指尖。AI 模型會先從影像中推估手部 21 個 landmark 的位置，再把這些位置交給程式做規則判斷。</p>
+          <div class="background-grid">
+          <div>
+            <div class="scenario-list">
+              <div class="scenario">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                  <rect x="8" y="10" width="32" height="22" rx="3"></rect>
+                  <path d="M16 38h16M24 32v6M18 21h12"></path>
+                </svg>
+                <div>
+                  <strong>免接觸控制</strong>
+                  <span>例如展示簡報時揮手翻頁、公共螢幕不用觸碰就能操作。</span>
+                </div>
+              </div>
+              <div class="scenario">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                  <path d="M10 31c8-10 20-10 28 0"></path>
+                  <path d="M15 25l5-11 5 11M28 25l5-8 5 8"></path>
+                  <circle cx="20" cy="14" r="3"></circle>
+                </svg>
+                <div>
+                  <strong>遊戲與體感互動</strong>
+                  <span>例如用手勢選擇道具、控制角色動作、做體感闖關。</span>
+                </div>
+              </div>
+              <div class="scenario">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                  <path d="M12 36V15a5 5 0 0 1 10 0v11"></path>
+                  <path d="M22 20a5 5 0 0 1 10 0v8"></path>
+                  <path d="M32 24a5 5 0 0 1 8 4v3c0 7-5 11-13 11h-5c-7 0-10-5-10-10"></path>
+                </svg>
+                <div>
+                  <strong>輔助科技</strong>
+                  <span>例如用手勢幫助行動不便者控制設備，或把手語動作轉成文字提示。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rule-box">
+            <strong>這節課只抓一個核心</strong>
+            <code>鏡頭畫面
+→ AI 模型從像素中推估手部 21 個 landmark
+→ 程式比較 landmark 座標
+→ 判斷手勢</code>
+          </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="engage">
+      <div class="lesson-block">
+        <div class="step-head">
+          <div class="step-number">02</div>
+          <div class="step-copy">
+            <div class="lesson-meta">1 min · 觀察</div>
+            <h3>先不要查答案：猜一猜 AI 在看什麼</h3>
+            <p>對照手部 landmark 圖，先提出自己的判斷假設。</p>
+          </div>
+        </div>
+        <div class="step-body">
+          <p>看上方的 21 個手部 landmark。綠色點是五根手指的指尖，藍色點是常用的指根或手腕。假設 AI 要判斷「食指有沒有舉起」，你認為它會看哪兩個點？</p>
+          <div class="mission-grid">
+          <div class="mission-card">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+              <rect x="7" y="10" width="34" height="26" rx="4"></rect>
+              <path d="M17 38h14M24 36v5"></path>
+              <circle cx="24" cy="23" r="7"></circle>
+            </svg>
+            <strong>現象</strong>
+            <p>同一個張開手掌，正對鏡頭時較穩定；旋轉、靠太近或遮住手指時可能誤判。</p>
+          </div>
+          <div class="mission-card">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+              <path d="M8 24h12l4-12 4 24 4-12h8"></path>
+              <circle cx="24" cy="12" r="3"></circle>
+              <circle cx="28" cy="36" r="3"></circle>
+            </svg>
+            <strong>線索</strong>
+            <p>AI 輸出的不是一句「這是手」，而是一組可以比較的 x、y、z 數字。</p>
+          </div>
+          <div class="mission-card">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+              <path d="M10 34l10-20 8 16 4-8 6 12"></path>
+              <path d="M10 38h28"></path>
+              <circle cx="20" cy="14" r="3"></circle>
+            </svg>
+            <strong>任務</strong>
+            <p>實驗證明：手勢判斷依賴 landmark 的相對位置，而不是單靠手勢名稱。</p>
+          </div>
+          </div>
+          <div class="hint-strip">
+          <div class="hint"><b>0</b><span>手腕，用作整隻手位置參考</span></div>
+          <div class="hint"><b>4 / 8 / 12 / 16 / 20</b><span>五根手指的指尖</span></div>
+          <div class="hint"><b>5 / 9 / 13 / 17</b><span>四根長手指的指根</span></div>
+          <div class="hint"><b>y 值</b><span>在畫面中越靠上數值越小</span></div>
+          </div>
+          <div class="observe-layout">
+          <div class="observe-hand" aria-label="觀察用手勢 landmark 圖">
+            <svg viewBox="0 0 360 360" role="img" aria-label="完整手部 landmark 顏色說明">
+              <path class="bone" d="M178 304 L118 292 L70 268 L38 232 L20 194" />
+              <path class="bone" d="M178 304 L132 240 L104 166 L92 96 L84 40" />
+              <path class="bone" d="M178 304 L174 224 L168 142 L162 72 L158 18" />
+              <path class="bone" d="M178 304 L214 228 L240 148 L258 76 L272 22" />
+              <path class="bone" d="M178 304 L250 250 L298 204 L330 152 L346 104" />
+              <circle class="joint base" cx="178" cy="304" r="13" /><text class="num" x="178" y="304">0</text>
+              <circle class="joint" cx="118" cy="292" r="10" /><text class="num" x="118" y="292">1</text>
+              <circle class="joint" cx="70" cy="268" r="10" /><text class="num" x="70" y="268">2</text>
+              <circle class="joint" cx="38" cy="232" r="10" /><text class="num" x="38" y="232">3</text>
+              <circle class="joint tip" cx="20" cy="194" r="13" /><text class="num" x="20" y="194">4</text>
+              <circle class="joint base" cx="132" cy="240" r="12" /><text class="num" x="132" y="240">5</text>
+              <circle class="joint" cx="104" cy="166" r="10" /><text class="num" x="104" y="166">6</text>
+              <circle class="joint" cx="92" cy="96" r="10" /><text class="num" x="92" y="96">7</text>
+              <circle class="joint tip" cx="84" cy="40" r="13" /><text class="num" x="84" y="40">8</text>
+              <circle class="joint base" cx="174" cy="224" r="12" /><text class="num" x="174" y="224">9</text>
+              <circle class="joint" cx="168" cy="142" r="10" /><text class="num" x="168" y="142">10</text>
+              <circle class="joint" cx="162" cy="72" r="10" /><text class="num" x="162" y="72">11</text>
+              <circle class="joint tip" cx="158" cy="18" r="13" /><text class="num" x="158" y="18">12</text>
+              <circle class="joint base" cx="214" cy="228" r="12" /><text class="num" x="214" y="228">13</text>
+              <circle class="joint" cx="240" cy="148" r="10" /><text class="num" x="240" y="148">14</text>
+              <circle class="joint" cx="258" cy="76" r="10" /><text class="num" x="258" y="76">15</text>
+              <circle class="joint tip" cx="272" cy="22" r="13" /><text class="num" x="272" y="22">16</text>
+              <circle class="joint base" cx="250" cy="250" r="12" /><text class="num" x="250" y="250">17</text>
+              <circle class="joint" cx="298" cy="204" r="10" /><text class="num" x="298" y="204">18</text>
+              <circle class="joint" cx="330" cy="152" r="10" /><text class="num" x="330" y="152">19</text>
+              <circle class="joint tip" cx="346" cy="104" r="13" /><text class="num" x="346" y="104">20</text>
+            </svg>
+            <div class="legend">
+              <span class="tip-color"><i></i>綠色：五根手指的指尖 4 / 8 / 12 / 16 / 20</span>
+              <span class="base-color"><i></i>藍色：手腕與常用指根 0 / 5 / 9 / 13 / 17</span>
+              <span class="joint-color"><i></i>黃色：手指中間關節，用來補充形狀證據</span>
+            </div>
+          </div>
+
+          <div class="task-board">
+            <div class="task-card">
+              <h4>任務 1：找出判斷食指的兩個 landmark</h4>
+              <div class="hint-answer">
+                <details class="tip-box">
+                  <summary>提示</summary>
+                  <p>不要只看指尖。要判斷「舉起」，需要把指尖和同一根手指的指根作比較。</p>
+                </details>
+                <details class="answer-box">
+                  <summary>參考答案</summary>
+                  <p>可比較 8 號食指尖和 5 號食指根。若 8 號點在 5 號點上方，食指很可能是舉起的。</p>
+                </details>
+              </div>
+            </div>
+            <div class="task-card">
+              <h4>任務 2：預測什麼情況會讓規則失效</h4>
+              <div class="hint-answer">
+                <details class="tip-box">
+                  <summary>提示</summary>
+                  <p>想像鏡頭只看到平面畫面。當手的角度、距離或遮擋改變時，landmark 位置也會跟著變。</p>
+                </details>
+                <details class="answer-box">
+                  <summary>參考答案</summary>
+                  <p>手掌側著、太靠近鏡頭、手指被遮住、左右手切換，都可能讓原本只看 y 值的規則變不穩定。</p>
+                </details>
+              </div>
+            </div>
+          </div>
+          </div>
+          <div class="answer-grid">
+          <div class="field">
+            <label for="guess-points">我的猜測</label>
+            <textarea id="guess-points" placeholder="例如：我猜它會比較 8 號點和 5 號點，因為..."></textarea>
+          </div>
+          <div class="field">
+            <label for="guess-risk">我預測最容易失敗的情況</label>
+            <textarea id="guess-risk" placeholder="例如：手側著、太靠近鏡頭、只露出半隻手..."></textarea>
+          </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="lab">
+      <div class="lesson-block">
+        <div class="step-head">
+          <div class="step-number">03</div>
+          <div class="step-copy">
+            <div class="lesson-meta">3 min · 實驗</div>
+            <h3>用鏡頭找證據</h3>
+            <p>打開右上角鏡頭，每次只改變一個條件。</p>
+          </div>
+        </div>
+        <div class="step-body">
+          <p>這一步只做觀察，不急著判斷對錯。每次只改變一個條件，才能知道是哪個因素影響了 AI 的識別結果。</p>
+          <ol>
+          <li>允許使用攝影機，做出「一指、二指、五指」三個手勢。</li>
+          <li>每次只改變一個條件：手指數量、手的位置、手的角度。</li>
+          <li>觀察 8、12、16、20 號指尖和指根座標，找出一條能解釋結果的規則。</li>
+          </ol>
+          <div class="mini-diagram">
+          <div class="diagram-card">
+            <svg viewBox="0 0 360 210" aria-label="y 座標比較示意">
+              <rect x="18" y="18" width="324" height="174" rx="10" fill="#07101d" stroke="rgba(255,255,255,0.16)"></rect>
+              <path d="M54 168V48M54 48l-8 12M54 48l8 12" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"></path>
+              <text x="68" y="62" fill="#a8b6cc" font-size="14">y 較小：畫面上方</text>
+              <line x1="90" y1="132" x2="280" y2="132" stroke="#334155" stroke-width="3" stroke-dasharray="7 7"></line>
+              <line x1="90" y1="82" x2="280" y2="82" stroke="#334155" stroke-width="3" stroke-dasharray="7 7"></line>
+              <circle cx="180" cy="82" r="18" fill="rgba(52,211,153,0.18)" stroke="#34d399" stroke-width="4"></circle>
+              <text x="180" y="87" class="num">8</text>
+              <circle cx="180" cy="132" r="18" fill="#0f172a" stroke="#38bdf8" stroke-width="4"></circle>
+              <text x="180" y="137" class="num">5</text>
+              <path d="M212 82C250 86 252 125 212 132" fill="none" stroke="#fbbf24" stroke-width="4"></path>
+              <text x="218" y="110" fill="#fbbf24" font-size="14">8 在 5 上方</text>
+            </svg>
+          </div>
+          <div class="prompt">
+            <h3>觀察規則</h3>
+            <p>如果食指尖 8 號點比食指根 5 號點更靠上，常見規則會判斷食指舉起。請注意：這只是簡化規則，當手旋轉或鏡頭角度改變時，它可能失效。</p>
+            <div class="rule-box">
+              <strong>可先測試的規則</strong>
+              <code>如果 landmark[8].y &lt; landmark[5].y
+就先判斷：食指可能是舉起的</code>
+            </div>
+          </div>
+          </div>
+
+          <div class="answer-grid">
+          <div class="field">
+            <label for="stable">我觀察到最穩定的手勢</label>
+            <input id="stable" placeholder="例如：五指張開" />
+          </div>
+          <div class="field">
+            <label for="unstable">最容易讓 AI 出錯的改變</label>
+            <input id="unstable" placeholder="例如：手掌旋轉 90 度" />
+          </div>
+          </div>
+          <div class="evidence-table" aria-label="觀察記錄表">
+          <div class="evidence-row">
+            <span>一指</span>
+            <input placeholder="哪個指尖 y 值最明顯變小？" />
+            <input placeholder="識別結果是否穩定？" />
+          </div>
+          <div class="evidence-row">
+            <span>二指</span>
+            <input placeholder="8、12 號點和指根的關係" />
+            <input placeholder="哪個角度開始變不穩？" />
+          </div>
+          <div class="evidence-row">
+            <span>五指</span>
+            <input placeholder="五個指尖是否都在指根上方？" />
+            <input placeholder="手太近或太遠時有什麼變化？" />
+          </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <section id="explain">
+      <div class="lesson-block">
+        <div class="step-head">
+          <div class="step-number">04</div>
+          <div class="step-copy">
+            <div class="lesson-meta">2 min · 解釋</div>
+            <h3>把剛才的發現變成概念</h3>
+            <p>把觀察結果連到「關鍵點、座標、規則判斷」。</p>
+          </div>
+        </div>
+        <div class="step-body">
+          <p>手勢識別不是直接「理解」手，而是先把手轉成 21 個關鍵點，再用座標關係判斷手勢。</p>
+          <div class="concept-stack">
+            <div class="concept-panel">
+              <div class="concept-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                  <path d="M12 36h24M18 30l6-18 6 18"></path>
+                  <path d="M20 24h8"></path>
+                </svg>
+              </div>
+              <div>
+                <h4>概念一：關鍵點 landmark</h4>
+                <p>AI 先把手轉成 0 到 20 號位置點。這些點不是答案，而是後面判斷手勢的證據。</p>
+                <div class="concept-focus">
+                  <div class="hint"><b>0</b><span>手腕，常用作整隻手的參考點。</span></div>
+                  <div class="hint"><b>4 / 8 / 12 / 16 / 20</b><span>五根手指的指尖。</span></div>
+                </div>
+                <div class="concept-example">例子：8 號是食指尖，5 號是食指根，所以它們可以用來判斷食指是否舉起。</div>
+              </div>
+            </div>
+
+            <div class="concept-panel">
+              <div class="concept-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                  <path d="M8 34h32M14 28l8-8 6 5 8-12"></path>
+                  <circle cx="22" cy="20" r="2"></circle>
+                  <circle cx="36" cy="13" r="2"></circle>
+                </svg>
+              </div>
+              <div>
+                <h4>概念二：座標 x / y / z</h4>
+                <p>每個 landmark 都有座標。這節課主要看 y 值：畫面越上方，y 值通常越小。</p>
+                <div class="concept-focus">
+                  <div class="hint"><b>x</b><span>左右位置。</span></div>
+                  <div class="hint"><b>y</b><span>上下位置，是判斷手指舉起的常用線索。</span></div>
+                </div>
+                <div class="concept-example">例子：如果 8 號點的 y 值小於 5 號點，代表食指尖比食指根更靠上。</div>
+              </div>
+            </div>
+
+            <div class="concept-panel">
+              <div class="concept-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                  <path d="M12 14h24v20H12z"></path>
+                  <path d="M18 24h12M30 24l-5-5M30 24l-5 5"></path>
+                </svg>
+              </div>
+              <div>
+                <h4>概念三：規則判斷</h4>
+                <p>程式不需要「懂」手勢名稱，它只要比較 landmark 的相對位置，就能做出初步判斷。</p>
+                <div class="concept-focus">
+                  <div class="hint"><b>可靠時</b><span>手正對鏡頭、指尖和指根位置清楚。</span></div>
+                  <div class="hint"><b>失效時</b><span>旋轉、遮擋、左右手或距離改變。</span></div>
+                </div>
+                <div class="concept-example">例子：一條簡化規則可以是「如果 8.y &lt; 5.y，就判斷食指可能舉起」。</div>
+              </div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:14px">
+          <label for="rule">把你的發現寫成一條規則</label>
+          <textarea id="rule" placeholder="如果 ______ 號點的 y 值 ______ ______ 號點，就代表 ______。"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="apply">
+      <div class="lesson-block">
+        <div class="step-head">
+          <div class="step-number">05</div>
+          <div class="step-copy">
+            <div class="lesson-meta">2 min · 挑戰</div>
+            <h3>換一個情境：你的規則還成立嗎？</h3>
+            <p>用反例檢查你的規則是否真的可靠。</p>
+          </div>
+        </div>
+        <div class="step-body">
+          <p>選一個新情境測試你的規則：手旋轉 90 度、鏡頭左右反轉、手太靠近鏡頭、只露出半隻手。規則如果失敗，請補一個新證據。</p>
+          <div class="mission-grid">
+          <div class="mission-card">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+              <path d="M24 8v8l6-6M24 40v-8l-6 6"></path>
+              <path d="M12 16a16 16 0 0 0 0 16M36 16a16 16 0 0 1 0 16"></path>
+            </svg>
+            <strong>旋轉</strong>
+            <p>手掌側著時，y 值不一定能完整代表「手指有沒有伸直」。</p>
+          </div>
+          <div class="mission-card">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+              <path d="M8 24h32M15 17l-7 7 7 7M33 17l7 7-7 7"></path>
+            </svg>
+            <strong>左右反轉</strong>
+            <p>拇指規則常受左右手影響，可能需要先判斷手掌方向。</p>
+          </div>
+          <div class="mission-card">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+              <rect x="10" y="10" width="28" height="28" rx="4"></rect>
+              <path d="M18 18h12M18 24h7M18 30h16"></path>
+            </svg>
+            <strong>遮擋</strong>
+            <p>某些點被擋住時，模型可能猜錯 landmark，規則也會跟著錯。</p>
+          </div>
+          </div>
+          <div class="answer-grid">
+          <div class="field">
+            <label for="new-case">我選的新情境</label>
+            <textarea id="new-case" placeholder="例如：手掌側著時，8 號點和 5 號點的 y 值差距變小..."></textarea>
+          </div>
+          <div class="field">
+            <label for="improve">我會怎樣改良規則</label>
+            <textarea id="improve" placeholder="例如：除了看 8 和 5，也要看 12、16、20，或加入手腕 0 號點作參考。"></textarea>
+          </div>
+          </div>
+
+          <div class="ai-box">
+          <h3>讓 AI 當「杠精」</h3>
+          <p>把你的規則和改良方法交給 AI，要求它找漏洞：</p>
+          <code>請扮演嚴格的反方挑戰者。以下是我對手勢識別規則的初步論證：
+「貼上我的論證」
+
+請找出我論證中的邏輯漏洞，並提出三個反方觀點。
+每個反方觀點都要說明：它攻擊的是哪個假設、需要補充什麼證據、可以用什麼小實驗驗證。</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="answer">
+      <div class="lesson-block">
+        <div class="step-head">
+          <div class="step-number">06</div>
+          <div class="step-copy">
+            <div class="lesson-meta">2 min · 學習結論</div>
+            <h3>按順序整理你的三個結論</h3>
+            <p>先寫規則，再寫限制，最後寫補強證據。</p>
+          </div>
+        </div>
+        <div class="step-body">
+          <div class="conclusion-steps">
+          <div class="conclusion-card">
+            <div class="step-num">1</div>
+            <div class="field">
+              <label for="final-rule">我的手勢判斷規則</label>
+              <textarea id="final-rule" placeholder="我用 ______ 和 ______ 兩個關鍵點判斷，因為..."></textarea>
+              <div class="example">示例：我用 8 號食指尖和 5 號食指根判斷食指是否舉起，因為 8 號點在 5 號點上方時，通常代表食指伸直。</div>
+            </div>
+          </div>
+          <div class="conclusion-card">
+            <div class="step-num">2</div>
+            <div class="field">
+              <label for="final-risk">這條規則可能失敗的情況</label>
+              <textarea id="final-risk" placeholder="當 ______ 時，規則可能失敗，因為..."></textarea>
+              <div class="example">示例：當手掌側著或手指被遮住時，8 號點和 5 號點的 y 值關係可能不明顯，所以規則會變不穩定。</div>
+            </div>
+          </div>
+          <div class="conclusion-card">
+            <div class="step-num">3</div>
+            <div class="field">
+              <label for="final-reflect">我下一步會補充的證據</label>
+              <textarea id="final-reflect" placeholder="我會再觀察 ______，用來確認..."></textarea>
+              <div class="example">示例：我會再觀察 12、16、20 號指尖和各自指根的關係，確認是否真的有多根手指伸出。</div>
+            </div>
+          </div>
+          </div>
+          <div class="final-lab-entry">
+          <div>
+            <strong>完整互動實驗室</strong>
+            <p>整理完學習結論後，再進入完整實驗室做答題、程式條件和手勢闖關。</p>
+          </div>
+          <a class="btn primary" href="lab.html">進入互動實驗室</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>AI 手勢識別挑戰 · 10 分鐘探究課</footer>
+  </main>
+  <script>
+    const demoPoints = [
+      "手腕", "拇指根", "拇指 1", "拇指 2", "拇指尖",
+      "食指根", "食指 1", "食指 2", "食指尖",
+      "中指根", "中指 1", "中指 2", "中指尖",
+      "無名指根", "無名指 1", "無名指 2", "無名指尖",
+      "小指根", "小指 1", "小指 2", "小指尖"
+    ];
+
+    const demoRows = [];
+    let demoHands = null;
+    let demoCamera = null;
+    let demoStarted = false;
+
+    function initDemoTable() {
+      const body = document.getElementById("demo-landmarks");
+      if (!body || body.children.length) return;
+      demoPoints.forEach((name, index) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${index} ${name}</td><td>—</td><td>—</td><td>—</td>`;
+        body.appendChild(row);
+        demoRows[index] = row;
+      });
+    }
+
+    function demoFmt(value) {
+      return Number.isFinite(value) ? value.toFixed(3) : "—";
+    }
+
+    function setDemoStatus(text) {
+      const el = document.getElementById("demo-status");
+      if (el) el.textContent = text;
+    }
+
+    function setDemoGesture(name, rule) {
+      document.getElementById("demo-gesture").textContent = name;
+      document.getElementById("demo-rule").textContent = rule;
+    }
+
+    function clearDemoData() {
+      demoRows.forEach(row => {
+        row.children[1].textContent = "—";
+        row.children[2].textContent = "—";
+        row.children[3].textContent = "—";
+      });
+    }
+
+    function updateDemoData(lm) {
+      lm.forEach((point, index) => {
+        const row = demoRows[index];
+        if (!row) return;
+        row.children[1].textContent = demoFmt(point.x);
+        row.children[2].textContent = demoFmt(point.y);
+        row.children[3].textContent = demoFmt(point.z);
+      });
+    }
+
+    function demoFingerUp(lm, tip, base) {
+      return lm[tip].y < lm[base].y;
+    }
+
+    function classifyDemoGesture(lm) {
+      const index = demoFingerUp(lm, 8, 5);
+      const middle = demoFingerUp(lm, 12, 9);
+      const ring = demoFingerUp(lm, 16, 13);
+      const pinky = demoFingerUp(lm, 20, 17);
+      const thumbOpen = Math.abs(lm[4].x - lm[2].x) > 0.075;
+      const count = [thumbOpen, index, middle, ring, pinky].filter(Boolean).length;
+
+      if (index && middle && ring && pinky && thumbOpen) {
+        return ["五指張開", "4/8/12/16/20 多數指尖都離開掌心"];
+      }
+      if (index && middle && !ring && !pinky) {
+        return ["二指", "8、12 在各自指根上方，16、20 未明顯上方"];
+      }
+      if (index && !middle && !ring && !pinky) {
+        return ["一指", "8 號食指尖在 5 號食指根上方"];
+      }
+      if (count === 0) {
+        return ["握拳或手指彎曲", "指尖沒有明顯高於指根"];
+      }
+      return ["手勢偵測中", `目前約 ${count} 根手指伸出`];
+    }
+
+    function drawDemoLabels(ctx, lm) {
+      ctx.save();
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      lm.forEach((point, index) => {
+        const x = point.x * 640;
+        const y = point.y * 480;
+        ctx.beginPath();
+        ctx.arc(x + 9, y - 10, 9, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(8,17,31,0.88)";
+        ctx.fill();
+        ctx.strokeStyle = index === 0 || [5,9,13,17].includes(index) ? "#38bdf8" : [4,8,12,16,20].includes(index) ? "#34d399" : "#fbbf24";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "#edf5ff";
+        ctx.fillText(String(index), x + 9, y - 10);
+      });
+      ctx.restore();
+    }
+
+    function onDemoResults(results) {
+      const canvas = document.getElementById("demo-canvas");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, 640, 480);
+      ctx.save();
+      ctx.translate(640, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(results.image, 0, 0, 640, 480);
+      ctx.restore();
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length) {
+        const lm = results.multiHandLandmarks[0];
+        const mirrored = lm.map(point => ({ x: 1 - point.x, y: point.y, z: point.z }));
+        drawConnectors(ctx, mirrored, HAND_CONNECTIONS, { color: "#60a5fa", lineWidth: 3 });
+        drawLandmarks(ctx, mirrored, { color: "#fbbf24", lineWidth: 1, radius: 4 });
+        drawDemoLabels(ctx, mirrored);
+        updateDemoData(lm);
+        const [name, rule] = classifyDemoGesture(lm);
+        setDemoGesture(name, rule);
+        setDemoStatus("已偵測到手部，資料即時更新中");
+      } else {
+        clearDemoData();
+        setDemoGesture("尚未偵測", "請將手放入畫面");
+        setDemoStatus("等待手部進入畫面");
+      }
+    }
+
+    function startDemoCamera() {
+      if (demoStarted) return;
+      demoStarted = true;
+      initDemoTable();
+      setDemoStatus("正在開啟攝影機...");
+
+      demoHands = new Hands({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      demoHands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.6
+      });
+      demoHands.onResults(onDemoResults);
+
+      demoCamera = new Camera(document.getElementById("demo-video"), {
+        onFrame: async () => {
+          if (demoHands) await demoHands.send({ image: document.getElementById("demo-video") });
+        },
+        width: 640,
+        height: 480
+      });
+      demoCamera.start().catch(error => {
+        setDemoStatus("無法開啟攝影機：" + error.message);
+      });
+    }
+
+    initDemoTable();
+    document.querySelector(".camera-widget").addEventListener("toggle", event => {
+      if (event.currentTarget.open) startDemoCamera();
+    });
+  </script>
+</body>
+</html>
